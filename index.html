@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ระบบแจ้งซ่อม - ฟาร์มไก่</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg:#0f1620; --panel:#161f2c; --panel2:#1c2734; --border:#2a3a4c;
+    --text:#e7edf3; --muted:#93a4b8; --accent:#4fb3ff; --accent2:#ffb454;
+    --green:#4fd18a; --red:#ff6b6b; --purple:#b388ff;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI","Sarabun",Tahoma,sans-serif; }
+  .app { max-width:520px; margin:0 auto; min-height:100vh; padding-bottom:78px; position:relative; }
+
+  header { padding:16px 16px 12px; background:linear-gradient(135deg,#16222f,#101a24); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; }
+  header .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  header h1 { margin:0; font-size:18px; }
+  header .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .icon-btn { background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:16px; cursor:pointer; }
+  #syncStatus.ok { color:var(--green); }
+  #syncStatus.err { color:var(--red); }
+
+  .view { display:none; padding:14px 16px 20px; }
+  .view.active { display:block; }
+
+  /* form */
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; font-weight:600; }
+  .field select, .field input, .field textarea {
+    width:100%; padding:13px 14px; border-radius:10px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:15.5px; font-family:inherit;
+  }
+  .field select:focus, .field input:focus, .field textarea:focus { outline:none; border-color:var(--accent); }
+  .field textarea { resize:vertical; min-height:90px; }
+  .submit-btn {
+    width:100%; padding:16px; border:none; border-radius:12px; background:linear-gradient(135deg,#2f8fe0,#4fb3ff);
+    color:#08131d; font-weight:800; font-size:16px; cursor:pointer; margin-top:6px;
+  }
+  .submit-btn:active { filter:brightness(0.95); }
+  .success-banner {
+    background:rgba(79,209,138,0.12); border:1px solid rgba(79,209,138,0.4); color:var(--green);
+    padding:14px; border-radius:10px; margin-bottom:14px; font-size:14px; text-align:center; font-weight:700;
+  }
+  .confirm-row { font-size:13px; color:var(--text); font-weight:400; margin-top:6px; }
+  .confirm-row b { color:var(--green); font-weight:700; }
+
+  /* filters */
+  .filter-bar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .filter-bar select, .filter-bar input { flex:1; min-width:110px; padding:10px 10px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13.5px; }
+  .status-chips { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:10px; }
+  .status-chip { flex-shrink:0; padding:7px 13px; border-radius:20px; font-size:12.5px; border:1px solid var(--border); background:var(--panel2); color:var(--muted); cursor:pointer; white-space:nowrap; }
+  .status-chip.active { border-color:var(--accent); color:var(--accent); background:rgba(79,179,255,0.1); font-weight:700; }
+
+  /* ticket cards */
+  .ticket-card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .ticket-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .ticket-farm { font-weight:700; font-size:15px; }
+  .ticket-house { color:var(--muted); font-size:12.5px; }
+  .ticket-no { color:var(--muted); font-size:11.5px; }
+  .status-badge { display:inline-block; padding:4px 11px; border-radius:20px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .status-badge.new { background:rgba(255,107,107,0.15); color:var(--red); }
+  .status-badge.assigned { background:rgba(255,180,84,0.15); color:var(--accent2); }
+  .status-badge.waiting { background:rgba(179,136,255,0.15); color:var(--purple); }
+  .status-badge.progress { background:rgba(79,179,255,0.15); color:var(--accent); }
+  .status-badge.done { background:rgba(79,209,138,0.15); color:var(--green); }
+  .ticket-cat { display:inline-block; margin-top:8px; padding:3px 10px; border-radius:6px; font-size:11.5px; background:var(--panel2); color:var(--muted); }
+  .ticket-desc { margin-top:8px; font-size:14px; line-height:1.5; }
+  .ticket-meta { margin-top:8px; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .ticket-detail { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); display:none; }
+  .ticket-detail.open { display:block; }
+  .detail-row { font-size:13px; margin-bottom:8px; }
+  .detail-row b { color:var(--muted); font-weight:600; }
+  .call-link { color:var(--accent); text-decoration:none; font-weight:700; }
+  .claim-form { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .claim-form input { padding:11px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:14px; }
+  .claim-btn { background:var(--accent2); color:#2b1a00; border:none; border-radius:8px; padding:12px; font-weight:800; cursor:pointer; }
+  .status-btns { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .status-btn { padding:12px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; font-weight:700; cursor:pointer; }
+  .status-btn.current { border-color:var(--accent); color:var(--accent); background:rgba(79,179,255,0.12); }
+  .history-log { margin-top:10px; font-size:11.5px; color:var(--muted); background:var(--panel2); border-radius:8px; padding:10px; white-space:pre-line; line-height:1.6; max-height:150px; overflow-y:auto; }
+  .expand-hint { text-align:center; color:var(--accent); font-size:12px; margin-top:8px; cursor:pointer; }
+  .empty-state { text-align:center; color:var(--muted); padding:40px 20px; font-size:14px; }
+
+  .export-bar { margin-bottom:14px; }
+  .export-btn-full { width:100%; padding:12px; border-radius:10px; border:none; background:linear-gradient(135deg,#1d8f5e,#26b374); color:#fff; font-weight:700; font-size:14px; cursor:pointer; }
+
+  /* dashboard on report page */
+  .dash-section { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
+  .dash-title { font-size:15px; font-weight:700; color:var(--accent); margin-bottom:12px; }
+  .dash-filter { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13.5px; margin-bottom:16px; }
+
+  .chart-card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .chart-card-title { font-size:13px; font-weight:700; color:var(--muted); margin-bottom:14px; }
+  .donut-wrap { display:flex; justify-content:center; }
+  .donut-legend { display:flex; flex-wrap:wrap; gap:8px 14px; justify-content:center; margin-top:14px; }
+  .donut-legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text); }
+  .donut-legend-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .donut-center-num { font-size:26px; font-weight:800; }
+  .donut-center-label { font-size:10.5px; color:var(--muted); }
+
+  .farm-bar-row { margin-bottom:10px; }
+  .farm-bar-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .farm-bar-label .fname { color:var(--text); font-weight:600; }
+  .farm-bar-label .fcount { color:var(--accent2); font-weight:700; }
+  .farm-bar-track { height:9px; background:var(--panel2); border-radius:5px; overflow:hidden; }
+  .farm-bar-fill { height:100%; background:linear-gradient(90deg,#4fb3ff,#ffb454); border-radius:5px; }
+
+  .dash-list-title { font-size:13px; font-weight:700; color:var(--muted); margin:4px 0 10px; }
+  .dash-row { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:11px 13px; margin-bottom:8px; }
+  .dash-row-left { min-width:0; flex:1; }
+  .dash-row-farm { font-size:11.5px; color:var(--muted); }
+  .dash-row-job { font-size:13.5px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dash-row-right { flex-shrink:0; }
+
+  /* dashboard old card styles (kept for compat, unused now) */
+  .dash-card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:9px; }
+  .dash-card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .dash-card-farm { font-weight:700; font-size:13.5px; }
+  .dash-card-desc { font-size:12.5px; color:var(--muted); margin-top:5px; }
+  .dash-card-meta { font-size:11px; color:var(--muted); margin-top:6px; }
+
+  /* PIN gate */
+  .pin-gate { text-align:center; padding:50px 10px; }
+  .pin-icon { font-size:44px; margin-bottom:10px; }
+  .pin-title { font-size:16px; font-weight:700; }
+  .pin-sub { font-size:13px; color:var(--muted); margin-top:6px; margin-bottom:22px; }
+  .pin-input { width:160px; margin:0 auto 14px; display:block; text-align:center; font-size:26px; letter-spacing:12px; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--panel2); color:var(--text); }
+  .pin-input:focus { outline:none; border-color:var(--accent); }
+  .pin-error { color:var(--red); font-size:13px; min-height:18px; margin-bottom:10px; }
+  .lock-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:13px; color:var(--green); }
+
+  /* bottom nav */
+  .bottom-nav { position:fixed; bottom:0; left:0; right:0; max-width:520px; margin:0 auto; background:var(--panel); border-top:1px solid var(--border); display:flex; z-index:50; }
+  .nav-btn { flex:1; padding:12px 4px 10px; text-align:center; background:none; border:none; color:var(--muted); font-size:11.5px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .nav-btn .icon { font-size:21px; }
+  .nav-btn.active { color:var(--accent); }
+
+  /* modal (settings) */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal-overlay.show { display:flex; }
+  .modal-box { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:22px; width:100%; max-width:440px; }
+  .modal-box h2 { margin:0 0 12px; font-size:16px; }
+  .modal-box p { color:var(--muted); font-size:12.5px; line-height:1.6; }
+  .modal-box input[type=text] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13.5px; margin:8px 0 14px; }
+  .modal-actions { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  .btn-primary { background:var(--accent); color:#08131d; border:none; padding:10px 16px; border-radius:8px; font-weight:700; cursor:pointer; }
+  .btn-secondary { background:var(--panel2); color:var(--text); border:1px solid var(--border); padding:10px 16px; border-radius:8px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="row">
+      <div>
+        <h1>🛠 ระบบแจ้งซ่อม</h1>
+        <div class="sub">ฟาร์มไก่ • <span id="syncStatus">กำลังเชื่อมต่อ...</span></div>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="icon-btn" id="refreshBtn">🔄</button>
+        <button class="icon-btn" id="settingsBtn">⚙</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ VIEW 1: REPORT FORM ============ -->
+  <div class="view active" id="view-report">
+    <div id="reportSuccessArea"></div>
+    <div class="field">
+      <label>ฟาร์ม *</label>
+      <select id="rFarm"></select>
+    </div>
+    <div class="field">
+      <label>หมายเลขเล้า *</label>
+      <input type="text" id="rHouse" placeholder="เช่น เล้า 3">
+    </div>
+    <div class="field">
+      <label>ระบบที่ชำรุด *</label>
+      <select id="rCategory">
+        <option>อุปกรณ์ไฟฟ้า</option>
+        <option>ระบบอาหาร</option>
+        <option>ระบายอากาศ</option>
+        <option>ระบบน้ำ</option>
+        <option>อุปกรณ์ช่าง</option>
+        <option>อื่นๆ</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>อาการ / ปัญหาที่พบ *</label>
+      <textarea id="rDesc" placeholder="อธิบายอาการที่พบ เช่น พัดลมไม่หมุน มีเสียงดัง..."></textarea>
+    </div>
+    <div class="field">
+      <label>ชื่อผู้แจ้ง *</label>
+      <input type="text" id="rName" placeholder="ชื่อ-นามสกุล">
+    </div>
+    <div class="field">
+      <label>เบอร์ติดต่อ *</label>
+      <input type="tel" id="rContact" placeholder="0812345678">
+    </div>
+    <button class="submit-btn" id="submitReportBtn">📨 แจ้งซ่อม</button>
+
+    <!-- ===== Read-only status dashboard (visible to everyone, no login needed) ===== -->
+    <div class="dash-section">
+      <div class="dash-title">📊 สถานะงานซ่อมล่าสุด</div>
+      <select id="dashFarmFilter" class="dash-filter"><option value="">ทุกฟาร์ม</option></select>
+
+      <div class="chart-card">
+        <div class="chart-card-title">สัดส่วนสถานะงานทั้งหมด</div>
+        <div class="donut-wrap" id="donutWrap"></div>
+        <div class="donut-legend" id="donutLegend"></div>
+      </div>
+
+      <div class="chart-card" id="farmBarCard">
+        <div class="chart-card-title">งานค้าง (ยังไม่เสร็จ) แยกตามฟาร์ม</div>
+        <div id="farmBarChart"></div>
+      </div>
+
+      <div class="dash-list-title">รายการงานที่ยังไม่เสร็จ</div>
+      <div id="dashList"></div>
+    </div>
+  </div>
+
+  <!-- ============ VIEW 2: TICKET LIST / MANAGE (PIN protected - technicians only) ============ -->
+  <div class="view" id="view-list">
+
+    <!-- PIN gate screen -->
+    <div id="pinGate" class="pin-gate">
+      <div class="pin-icon">🔒</div>
+      <div class="pin-title">สำหรับช่าง/วิศวกรเท่านั้น</div>
+      <div class="pin-sub">กรอกรหัสผ่านเพื่อเข้าจัดการงานซ่อม</div>
+      <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" id="pinInput" class="pin-input" placeholder="••••">
+      <div class="pin-error" id="pinError"></div>
+      <button class="submit-btn" id="pinSubmitBtn">ปลดล็อก</button>
+    </div>
+
+    <!-- Actual management content (shown only after correct PIN) -->
+    <div id="managementContent" style="display:none;">
+      <div class="lock-bar">
+        <span>🔓 ปลดล็อกแล้ว</span>
+        <button class="icon-btn" id="lockBtn">🔒 ล็อก</button>
+      </div>
+      <div class="filter-bar">
+        <select id="filterFarm"><option value="">ทุกฟาร์ม</option></select>
+        <input type="text" id="filterSearch" placeholder="🔍 ค้นหา...">
+      </div>
+      <div class="status-chips" id="statusChips"></div>
+      <div class="export-bar">
+        <button class="export-btn-full" id="exportTicketsBtn">⬇ Export ประวัติ (แยกตามฟาร์ม)</button>
+      </div>
+      <div id="ticketList"></div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <button class="nav-btn active" data-view="report"><span class="icon">📨</span>แจ้งซ่อม</button>
+    <button class="nav-btn" data-view="list"><span class="icon">📋</span>รายการงานซ่อม</button>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-box">
+    <h2>⚙ ตั้งค่าฐานข้อมูล</h2>
+    <p>ลิงก์เริ่มต้นถูกฝังไว้ในไฟล์นี้แล้ว ใช้ Apps Script ตัวเดียวกับระบบ Spare Part — ไม่ต้องตั้งค่าอะไรตามปกติ</p>
+    <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    <div class="modal-actions">
+      <button class="btn-secondary" id="resetDefaultSettings">ใช้ค่าเริ่มต้น</button>
+      <button class="btn-secondary" id="cancelSettings">ยกเลิก</button>
+      <button class="btn-primary" id="saveSettings">บันทึกและโหลดข้อมูล</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIG
+   ========================================================= */
+const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwWUw58foq7MThLIbBgftBRQ03Usw4wRpSePqA8Lz8VDfCcse-7dCl7gfo0vqyzNOm7/exec';
+let APPS_SCRIPT_URL = localStorage.getItem('apps_script_url') || DEFAULT_APPS_SCRIPT_URL;
+
+const FARMS = [
+  'ฟาร์มวัฒนา','ฟาร์มน้ำทองวีระ','ฟาร์มสินรัตนโชติ','ฟาร์มณรงศักดิ์','ฟาร์มสุทิน4+อารียา',
+  'ฟาร์มภูมศรีสุวรรณ','Tripple N1','Tripple N2','89 บุญเจิญ','ซันวิวัฒน์','ฟาร์มศรีสุวรรณ',
+  'ฟาร์มสมบูรณ์ทรัพย์','ฟาร์มรักษ์','SK3 รุ่งไพบูลย์','ฟาร์มสุทิน5','SK1 กสิณ','ฟาร์มสุข',
+  'ฟาร์มรัตนา','ฟารมดี','SK4 เพชรลำดวน'
+];
+
+const STATUS_LIST = ['จ่ายงาน','รออะไหล่','กำลังดำเนินการ','เสร็จสิ้น'];
+const STATUS_CLASS = { 'รอรับเรื่อง':'new', 'จ่ายงาน':'assigned', 'รออะไหล่':'waiting', 'กำลังดำเนินการ':'progress', 'เสร็จสิ้น':'done' };
+
+let TICKETS = [];
+let filterState = { farm:'', status:'', search:'' };
+let openTicketId = null;
+
+/* =========================================================
+   INIT selects
+   ========================================================= */
+document.getElementById('rFarm').innerHTML = FARMS.map(f => `<option value="${f}">${f}</option>`).join('');
+document.getElementById('filterFarm').innerHTML = '<option value="">ทุกฟาร์ม</option>' + FARMS.map(f => `<option value="${f}">${f}</option>`).join('');
+document.getElementById('dashFarmFilter').innerHTML = '<option value="">ทุกฟาร์ม</option>' + FARMS.map(f => `<option value="${f}">${f}</option>`).join('');
+document.getElementById('statusChips').innerHTML = ['ทั้งหมด', ...['รอรับเรื่อง', ...STATUS_LIST]].map(s => {
+  const val = s === 'ทั้งหมด' ? '' : s;
+  return `<button class="status-chip ${val===''?'active':''}" data-status="${val}">${s}</button>`;
+}).join('');
+
+/* =========================================================
+   TECHNICIAN PIN GATE (client-side only — a basic deterrent,
+   not real security: the PIN is visible in this file's source)
+   ========================================================= */
+const TECH_PIN = '4120';
+function isTechUnlocked() { return sessionStorage.getItem('tech_unlocked') === 'yes'; }
+function showListView() {
+  if (isTechUnlocked()) {
+    document.getElementById('pinGate').style.display = 'none';
+    document.getElementById('managementContent').style.display = 'block';
+    renderTickets();
+  } else {
+    document.getElementById('pinGate').style.display = 'block';
+    document.getElementById('managementContent').style.display = 'none';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').textContent = '';
+    setTimeout(() => document.getElementById('pinInput').focus(), 100);
+  }
+}
+document.getElementById('pinSubmitBtn').addEventListener('click', checkPin);
+document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
+function checkPin() {
+  const val = document.getElementById('pinInput').value.trim();
+  if (val === TECH_PIN) {
+    sessionStorage.setItem('tech_unlocked', 'yes');
+    showListView();
+  } else {
+    document.getElementById('pinError').textContent = 'รหัสผ่านไม่ถูกต้อง';
+    document.getElementById('pinInput').value = '';
+  }
+}
+document.getElementById('lockBtn').addEventListener('click', () => {
+  sessionStorage.removeItem('tech_unlocked');
+  showListView();
+});
+
+/* =========================================================
+   NAV
+   ========================================================= */
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'list') showListView();
+  });
+});
+
+/* =========================================================
+   SETTINGS
+   ========================================================= */
+const settingsModal = document.getElementById('settingsModal');
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  document.getElementById('urlInput').value = APPS_SCRIPT_URL;
+  settingsModal.classList.add('show');
+});
+document.getElementById('cancelSettings').addEventListener('click', () => settingsModal.classList.remove('show'));
+document.getElementById('resetDefaultSettings').addEventListener('click', () => {
+  localStorage.removeItem('apps_script_url');
+  APPS_SCRIPT_URL = DEFAULT_APPS_SCRIPT_URL;
+  document.getElementById('urlInput').value = APPS_SCRIPT_URL;
+  settingsModal.classList.remove('show');
+  loadTickets();
+});
+document.getElementById('saveSettings').addEventListener('click', () => {
+  const v = document.getElementById('urlInput').value.trim();
+  APPS_SCRIPT_URL = v;
+  localStorage.setItem('apps_script_url', v);
+  settingsModal.classList.remove('show');
+  loadTickets();
+});
+document.getElementById('refreshBtn').addEventListener('click', loadTickets);
+
+/* =========================================================
+   DATA LOAD / SAVE
+   ========================================================= */
+async function loadTickets() {
+  const statusEl = document.getElementById('syncStatus');
+  statusEl.textContent = 'กำลังโหลด...'; statusEl.className='';
+  try {
+    const res = await fetch(APPS_SCRIPT_URL + '?type=tickets');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'load failed');
+    TICKETS = json.tickets.map(t => ({...t}));
+    TICKETS.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    statusEl.textContent = `เชื่อมต่อสำเร็จ • ${TICKETS.length} งาน`;
+    statusEl.className = 'ok';
+    renderTickets();
+    renderDashboard();
+  } catch (err) {
+    statusEl.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + err.message;
+    statusEl.className = 'err';
+  }
+}
+
+async function postAction(payload) {
+  const statusEl = document.getElementById('syncStatus');
+  statusEl.textContent = 'กำลังบันทึก...'; statusEl.className='';
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method:'POST',
+      headers: { 'Content-Type':'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'save failed');
+    statusEl.textContent = 'บันทึกสำเร็จ'; statusEl.className='ok';
+    return json;
+  } catch (err) {
+    statusEl.textContent = 'บันทึกไม่สำเร็จ: ' + err.message; statusEl.className='err';
+    alert('บันทึกไม่สำเร็จ: ' + err.message);
+    return null;
+  }
+}
+
+/* =========================================================
+   REPORT FORM SUBMIT
+   ========================================================= */
+document.getElementById('submitReportBtn').addEventListener('click', async () => {
+  const farm = document.getElementById('rFarm').value;
+  const house_no = document.getElementById('rHouse').value.trim();
+  const category = document.getElementById('rCategory').value;
+  const description = document.getElementById('rDesc').value.trim();
+  const reporter_name = document.getElementById('rName').value.trim();
+  const reporter_contact = document.getElementById('rContact').value.trim();
+
+  if (!house_no || !description || !reporter_name || !reporter_contact) {
+    alert('กรุณากรอกข้อมูลให้ครบทุกช่อง'); return;
+  }
+  const btn = document.getElementById('submitReportBtn');
+  btn.disabled = true; btn.textContent = 'กำลังส่ง...';
+  const result = await postAction({ action:'createTicket', ticket:{ farm, house_no, category, description, reporter_name, reporter_contact }});
+  btn.disabled = false; btn.textContent = '📨 แจ้งซ่อม';
+  if (result) {
+    const jobName = `${category} — ${description}`;
+    document.getElementById('reportSuccessArea').innerHTML = `
+      <div class="success-banner" style="text-align:left;">
+        ✅ แจ้งซ่อมสำเร็จ! เลขที่งาน #${result.ticket_no}
+        <div class="confirm-row"><b>ฟาร์ม:</b> ${farm} • ${house_no}</div>
+        <div class="confirm-row"><b>ชื่องาน:</b> ${jobName}</div>
+        <div class="confirm-row"><b>สถานะ:</b> <span class="status-badge new">รอรับเรื่อง</span></div>
+        <div style="margin-top:8px;font-weight:400;">ทีมช่างจะรับเรื่องโดยเร็วที่สุด</div>
+      </div>`;
+    document.getElementById('rHouse').value = '';
+    document.getElementById('rDesc').value = '';
+    document.getElementById('rName').value = '';
+    document.getElementById('rContact').value = '';
+    await loadTickets();
+    setTimeout(() => { document.getElementById('reportSuccessArea').innerHTML=''; }, 6000);
+  }
+});
+
+/* =========================================================
+   TICKET LIST RENDER
+   ========================================================= */
+document.getElementById('filterFarm').addEventListener('change', e => { filterState.farm = e.target.value; renderTickets(); });
+document.getElementById('filterSearch').addEventListener('input', e => { filterState.search = e.target.value; renderTickets(); });
+document.querySelectorAll('.status-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    filterState.status = chip.dataset.status;
+    renderTickets();
+  });
+});
+
+function timeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs/60000);
+  if (mins < 1) return 'เมื่อสักครู่';
+  if (mins < 60) return mins + ' นาทีที่แล้ว';
+  const hrs = Math.floor(mins/60);
+  if (hrs < 24) return hrs + ' ชม.ที่แล้ว';
+  const days = Math.floor(hrs/24);
+  return days + ' วันที่แล้ว';
+}
+
+function renderTickets() {
+  let rows = TICKETS.filter(t => {
+    if (filterState.farm && t.farm !== filterState.farm) return false;
+    if (filterState.status && t.status !== filterState.status) return false;
+    if (filterState.search) {
+      const s = filterState.search.toLowerCase();
+      const hay = (t.farm+' '+t.house_no+' '+t.category+' '+t.description+' '+t.reporter_name).toLowerCase();
+      if (!hay.includes(s)) return false;
+    }
+    return true;
+  });
+
+  const listEl = document.getElementById('ticketList');
+  if (!rows.length) {
+    listEl.innerHTML = `<div class="empty-state">ไม่พบรายการงานซ่อม</div>`;
+    return;
+  }
+
+  listEl.innerHTML = rows.map(t => {
+    const cls = STATUS_CLASS[t.status] || 'new';
+    const isOpen = openTicketId === t.id;
+    return `<div class="ticket-card">
+      <div class="ticket-top" onclick="toggleTicket('${t.id}')" style="cursor:pointer;">
+        <div>
+          <div class="ticket-farm">${t.farm} <span class="ticket-house">• ${t.house_no}</span></div>
+          <div class="ticket-no">#${t.ticket_no}</div>
+        </div>
+        <span class="status-badge ${cls}">${t.status}</span>
+      </div>
+      <span class="ticket-cat">${t.category}</span>
+      <div class="ticket-desc">${t.description}</div>
+      <div class="ticket-meta">
+        <span>แจ้งโดย ${t.reporter_name}</span>
+        <span>${timeAgo(t.created_at)}</span>
+      </div>
+      <div class="expand-hint" onclick="toggleTicket('${t.id}')">${isOpen ? '▲ ย่อ' : '▼ ดูรายละเอียด / อัปเดตสถานะ'}</div>
+      <div class="ticket-detail ${isOpen?'open':''}" id="detail-${t.id}">
+        ${renderTicketDetail(t)}
+      </div>
+    </div>`;
+  }).join('');
+
+  // rebind claim/status buttons
+  rows.forEach(t => {
+    const claimBtn = document.getElementById(`claim-btn-${t.id}`);
+    if (claimBtn) claimBtn.addEventListener('click', () => doClaim(t.id));
+    STATUS_LIST.forEach(s => {
+      const b = document.getElementById(`status-btn-${t.id}-${s}`);
+      if (b) b.addEventListener('click', () => doUpdateStatus(t.id, s));
+    });
+  });
+}
+
+function renderTicketDetail(t) {
+  let html = `<div class="detail-row"><b>อาการ:</b> ${t.description}</div>`;
+  html += `<div class="detail-row"><b>ผู้แจ้ง:</b> ${t.reporter_name} — <a class="call-link" href="tel:${t.reporter_contact}">📞 ${t.reporter_contact}</a></div>`;
+
+  if (t.status === 'รอรับเรื่อง') {
+    html += `<div class="claim-form">
+      <input type="text" id="assignee-name-${t.id}" placeholder="ชื่อผู้รับผิดชอบ (ช่าง/วิศวกร)">
+      <input type="tel" id="assignee-contact-${t.id}" placeholder="เบอร์โทรผู้รับผิดชอบ">
+      <button class="claim-btn" id="claim-btn-${t.id}">✋ รับงานนี้</button>
+    </div>`;
+  } else {
+    html += `<div class="detail-row"><b>ผู้รับผิดชอบ:</b> ${t.assignee_name || '-'} ${t.assignee_contact ? `— <a class="call-link" href="tel:${t.assignee_contact}">📞 ${t.assignee_contact}</a>` : ''}</div>`;
+    html += `<div class="status-btns">` + STATUS_LIST.map(s =>
+      `<button class="status-btn ${t.status===s?'current':''}" id="status-btn-${t.id}-${s}">${s}</button>`
+    ).join('') + `</div>`;
+  }
+
+  if (t.history) {
+    html += `<div class="history-log">${t.history.replace(/\n/g,'<br>')}</div>`;
+  }
+  return html;
+}
+
+function toggleTicket(id) {
+  openTicketId = (openTicketId === id) ? null : id;
+  renderTickets();
+}
+
+async function doClaim(id) {
+  const name = document.getElementById(`assignee-name-${id}`).value.trim();
+  const contact = document.getElementById(`assignee-contact-${id}`).value.trim();
+  if (!name || !contact) { alert('กรุณากรอกชื่อและเบอร์โทรผู้รับผิดชอบ'); return; }
+  const result = await postAction({ action:'claimTicket', id, assignee_name:name, assignee_contact:contact });
+  if (result) await loadTickets();
+}
+
+async function doUpdateStatus(id, status) {
+  const result = await postAction({ action:'updateTicketStatus', id, status });
+  if (result) await loadTickets();
+}
+
+/* =========================================================
+   READ-ONLY DASHBOARD (on the report page — no PIN needed)
+   ========================================================= */
+let dashFarm = '';
+document.getElementById('dashFarmFilter').addEventListener('change', e => { dashFarm = e.target.value; renderDashboard(); });
+
+const STATUS_COLOR = {
+  'รอรับเรื่อง': '#ff6b6b',
+  'จ่ายงาน': '#ffb454',
+  'รออะไหล่': '#b388ff',
+  'กำลังดำเนินการ': '#4fb3ff',
+  'เสร็จสิ้น': '#4fd18a',
+};
+
+function renderDonutChart(counts, total) {
+  const r = 45, cx = 60, cy = 60;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+  const statuses = Object.keys(counts).filter(s => counts[s] > 0);
+
+  if (total === 0) {
+    return `<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">ยังไม่มีข้อมูลงานซ่อม</div>`;
+  }
+
+  const circles = statuses.map(s => {
+    const frac = counts[s] / total;
+    const len = frac * circumference;
+    const dasharray = `${len} ${circumference - len}`;
+    const dashoffset = -offset;
+    offset += len;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${STATUS_COLOR[s]}" stroke-width="16"
+      stroke-dasharray="${dasharray}" stroke-dashoffset="${dashoffset}" />`;
+  }).join('');
+
+  return `
+    <div style="position:relative; width:150px; height:150px;">
+      <svg viewBox="0 0 120 120" width="150" height="150" style="transform:rotate(-90deg);">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1c2734" stroke-width="16"/>
+        ${circles}
+      </svg>
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div class="donut-center-num">${total}</div>
+        <div class="donut-center-label">งานทั้งหมด</div>
+      </div>
+    </div>`;
+}
+
+function renderDashboard() {
+  const scoped = dashFarm ? TICKETS.filter(t => t.farm === dashFarm) : TICKETS;
+  const allStatuses = ['รอรับเรื่อง', ...STATUS_LIST];
+
+  // ---- Donut chart: status distribution ----
+  const counts = {};
+  allStatuses.forEach(s => counts[s] = scoped.filter(t => t.status === s).length);
+  document.getElementById('donutWrap').innerHTML = renderDonutChart(counts, scoped.length);
+  document.getElementById('donutLegend').innerHTML = allStatuses.map(s => `
+    <div class="donut-legend-item">
+      <span class="donut-legend-dot" style="background:${STATUS_COLOR[s]}"></span>
+      ${s} (${counts[s]})
+    </div>`).join('');
+
+  // ---- Farm bar chart: open tickets per farm (hidden when a single farm is selected) ----
+  const farmBarCard = document.getElementById('farmBarCard');
+  if (dashFarm) {
+    farmBarCard.style.display = 'none';
+  } else {
+    farmBarCard.style.display = 'block';
+    const openByFarm = FARMS.map(f => ({
+      farm: f,
+      count: TICKETS.filter(t => t.farm === f && t.status !== 'เสร็จสิ้น').length
+    })).filter(x => x.count > 0).sort((a,b) => b.count - a.count).slice(0, 10);
+
+    const maxCount = Math.max(...openByFarm.map(x => x.count), 1);
+    const barsEl = document.getElementById('farmBarChart');
+    if (!openByFarm.length) {
+      barsEl.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:13px;">ไม่มีงานค้างในตอนนี้ 🎉</div>`;
+    } else {
+      barsEl.innerHTML = openByFarm.map(x => `
+        <div class="farm-bar-row">
+          <div class="farm-bar-label"><span class="fname">${x.farm}</span><span class="fcount">${x.count} งาน</span></div>
+          <div class="farm-bar-track"><div class="farm-bar-fill" style="width:${(x.count/maxCount*100).toFixed(0)}%"></div></div>
+        </div>`).join('');
+    }
+  }
+
+  // ---- List: ฟาร์ม / ชื่องาน / สถานะ (open tickets only) ----
+  const listEl = document.getElementById('dashList');
+  const openTickets = scoped.filter(t => t.status !== 'เสร็จสิ้น')
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 20);
+
+  if (!openTickets.length) {
+    listEl.innerHTML = `<div class="empty-state">ไม่มีงานซ่อมที่ค้างอยู่ 🎉</div>`;
+    return;
+  }
+
+  listEl.innerHTML = openTickets.map(t => {
+    const cls = STATUS_CLASS[t.status] || 'new';
+    const jobName = `${t.category} — ${t.description}`;
+    return `<div class="dash-row">
+      <div class="dash-row-left">
+        <div class="dash-row-farm">${t.farm} • ${t.house_no}</div>
+        <div class="dash-row-job" title="${jobName.replace(/"/g,'&quot;')}">${jobName}</div>
+      </div>
+      <div class="dash-row-right"><span class="status-badge ${cls}">${t.status}</span></div>
+    </div>`;
+  }).join('');
+}
+
+/* =========================================================
+   EXPORT
+   ========================================================= */
+document.getElementById('exportTicketsBtn').addEventListener('click', () => {
+  if (!TICKETS.length) { alert('ยังไม่มีข้อมูล'); return; }
+  const wb = XLSX.utils.book_new();
+  const mapRow = t => ({
+    'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
+    'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
+    'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
+    'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at, 'อัปเดตล่าสุด': t.updated_at, 'ประวัติ': t.history
+  });
+  const allRows = [...TICKETS].sort((a,b)=>a.ticket_no-b.ticket_no).map(mapRow);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), 'ทั้งหมด');
+
+  FARMS.forEach(farm => {
+    const rows = TICKETS.filter(t => t.farm === farm).sort((a,b)=>a.ticket_no-b.ticket_no).map(mapRow);
+    if (!rows.length) return;
+    let sheetName = farm.replace(/[\\/*?:\[\]]/g, '').substring(0,31);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName || 'farm');
+  });
+
+  XLSX.writeFile(wb, 'ประวัติแจ้งซ่อม.xlsx');
+});
+
+/* =========================================================
+   INIT
+   ========================================================= */
+loadTickets();
+</script>
+</body>
+</html>

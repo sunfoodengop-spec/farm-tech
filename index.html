@@ -72,6 +72,7 @@
   .ticket-detail { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); display:none; }
   .ticket-detail.open { display:block; }
   .detail-row { font-size:13px; margin-bottom:8px; }
+  .duration-row { color:var(--accent2); font-weight:600; }
   .detail-row b { color:var(--muted); font-weight:600; }
   .call-link { color:var(--accent); text-decoration:none; font-weight:700; }
   .claim-form { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
@@ -595,6 +596,27 @@ function timeAgo(dateStr) {
   return days + ' วันที่แล้ว';
 }
 
+/* ระยะเวลาดำเนินการ: นับตั้งแต่เวลาที่แจ้ง (created_at) ถึงเวลาที่งานเสร็จสิ้น (completed_at) */
+function durationHours(startStr, endStr) {
+  if (!startStr || !endStr) return null;
+  const ms = new Date(endStr).getTime() - new Date(startStr).getTime();
+  if (isNaN(ms) || ms < 0) return null;
+  return ms / 3600000;
+}
+function formatDuration(startStr, endStr) {
+  const hoursTotal = durationHours(startStr, endStr);
+  if (hoursTotal === null) return '-';
+  const totalMins = Math.round(hoursTotal * 60);
+  const days = Math.floor(totalMins / 1440);
+  const hrs = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  let parts = [];
+  if (days > 0) parts.push(days + ' วัน');
+  if (hrs > 0) parts.push(hrs + ' ชม.');
+  if (mins > 0 || parts.length === 0) parts.push(mins + ' นาที');
+  return parts.join(' ');
+}
+
 function renderTickets() {
   let rows = TICKETS.filter(t => {
     if (filterState.farm && t.farm !== filterState.farm) return false;
@@ -628,7 +650,7 @@ function renderTickets() {
       <div class="ticket-desc">${t.description}</div>
       <div class="ticket-meta">
         <span>แจ้งโดย ${t.reporter_name}</span>
-        <span>${timeAgo(t.created_at)}</span>
+        <span>${t.status === 'เสร็จสิ้น' ? '⏱ ใช้เวลา ' + formatDuration(t.created_at, t.completed_at) : timeAgo(t.created_at)}</span>
       </div>
       <div class="expand-hint" onclick="toggleTicket('${t.id}')">${isOpen ? '▲ ย่อ' : '▼ ดูรายละเอียด / อัปเดตสถานะ'}</div>
       <div class="ticket-detail ${isOpen?'open':''}" id="detail-${t.id}">
@@ -676,6 +698,7 @@ function renderTicketDetail(t) {
     html += `<div class="detail-row"><b>ผู้รับผิดชอบ:</b> ${t.assignee_name || '-'} ${t.assignee_contact ? `— <a class="call-link" href="tel:${t.assignee_contact}">📞 ${t.assignee_contact}</a>` : ''}</div>`;
 
     if (t.status === 'เสร็จสิ้น') {
+      html += `<div class="detail-row duration-row"><b>⏱ ระยะเวลาดำเนินการ:</b> ${formatDuration(t.created_at, t.completed_at)}</div>`;
       html += `<div class="detail-row"><b>อะไหล่ที่ใช้:</b> ${t.parts_used || '-'}</div>`;
       html += `<div class="detail-row"><b>วิธีแก้ไข:</b> ${t.solution || '-'}</div>`;
       html += `<div class="detail-row"><b>แนวทางป้องกัน:</b> ${t.prevention || '-'}</div>`;
@@ -856,14 +879,19 @@ function renderDashboard() {
 document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   if (!TICKETS.length) { alert('ยังไม่มีข้อมูล'); return; }
   const wb = XLSX.utils.book_new();
-  const mapRow = t => ({
-    'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
-    'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
-    'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
-    'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at,
-    'อะไหล่ที่ใช้': t.parts_used, 'วิธีแก้ไข': t.solution, 'แนวทางป้องกัน': t.prevention,
-    'อัปเดตล่าสุด': t.updated_at, 'ประวัติ': t.history
-  });
+  const mapRow = t => {
+    const hrs = durationHours(t.created_at, t.completed_at);
+    return {
+      'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
+      'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
+      'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
+      'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at,
+      'ระยะเวลาดำเนินการ': formatDuration(t.created_at, t.completed_at),
+      'ระยะเวลา (ชั่วโมง)': hrs === null ? '' : Math.round(hrs * 100) / 100,
+      'อะไหล่ที่ใช้': t.parts_used, 'วิธีแก้ไข': t.solution, 'แนวทางป้องกัน': t.prevention,
+      'อัปเดตล่าสุด': t.updated_at, 'ประวัติ': t.history
+    };
+  };
   const allRows = [...TICKETS].sort((a,b)=>a.ticket_no-b.ticket_no).map(mapRow);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), 'ทั้งหมด');
 

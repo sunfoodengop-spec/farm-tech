@@ -229,6 +229,8 @@
   .table-wrap-admin table { width:100%; border-collapse:collapse; font-size:12.5px; }
   .table-wrap-admin th { text-align:left; padding:9px 10px; background:var(--panel2); border-bottom:1px solid var(--border); white-space:nowrap; }
   .table-wrap-admin td { padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .pct-cell { cursor:pointer; user-select:none; }
+  .pct-cell:hover { background:rgba(79,179,255,0.1); }
   .bar-chart-row { margin-bottom:12px; }
   .bar-chart-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
   .bar-chart-track { height:10px; background:var(--panel2); border-radius:5px; overflow:hidden; display:flex; }
@@ -1306,6 +1308,7 @@ function getAdminRange() {
 }
 
 const ALL_STATUSES = ['รอรับเรื่อง', ...STATUS_LIST]; // รอรับเรื่อง, จ่ายงาน, รออะไหล่, กำลังดำเนินการ, เสร็จสิ้น
+let percentExcludedFarms = new Set(); // ฟาร์มที่ถูก "ไม่เลือก" ไม่ให้นับรวมใน % เกิน 1 วัน (คลิกที่เซลล์ % เพื่อสลับ)
 
 function computeAdminStats() {
   const { from, to } = getAdminRange();
@@ -1443,23 +1446,38 @@ function renderAdminReport() {
     </div>`).join('') || `<div class="empty-state">ยังไม่มีงานที่เสร็จสิ้นในช่วงเวลานี้</div>`;
 
   // ---- Table: ระบุครบทุกสถานะ เพื่อทวนสอบผลรวม ----
+  // % เกิน 1 วัน: คลิกที่เซลล์ % ของแต่ละฟาร์มเพื่อ เลือก/ไม่เลือก ฟาร์มนั้นเข้าคำนวณ % รวมท้ายตาราง
+  const includedRows = rows.filter(r => !percentExcludedFarms.has(r.farm));
+  const sumCountIncluded = includedRows.reduce((s,r) => s + r.count, 0);
+  const sumOver1dayIncluded = includedRows.reduce((s,r) => s + r.over1day, 0);
+  const totalPct = sumCountIncluded > 0 ? (sumOver1dayIncluded / sumCountIncluded * 100) : null;
+
   document.getElementById('adminTable').innerHTML = `
     <table>
       <thead><tr>
         <th>ฟาร์ม</th><th>แจ้งทั้งหมด</th>
         ${ALL_STATUSES.map(s => `<th>${s}</th>`).join('')}
-        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน</th><th>⚠️ วันที่ไม่ครบ</th>
+        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน</th>
+        <th title="คลิกที่เซลล์เพื่อเลือก/ไม่เลือกฟาร์มนี้เข้าคำนวณ % รวม">% เกิน 1 วัน</th>
+        <th>⚠️ วันที่ไม่ครบ</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => `<tr>
+        ${rows.map(r => {
+          const pct = r.count > 0 ? (r.over1day / r.count * 100) : null;
+          const excluded = percentExcludedFarms.has(r.farm);
+          return `<tr style="${excluded?'opacity:0.45;':''}">
           <td>${r.farm}</td><td><b>${r.count}</b></td>
           ${ALL_STATUSES.map(s => `<td>${r.statusCounts[s]||0}</td>`).join('')}
           <td>${r.maxHrs===null?'-':r.maxHrs.toFixed(1)}</td>
           <td>${r.minHrs===null?'-':r.minHrs.toFixed(1)}</td>
           <td>${r.avgHrs===null?'-':r.avgHrs.toFixed(1)}</td>
           <td style="${r.over1day>0?'color:var(--red);font-weight:700;':''}">${r.over1day}</td>
+          <td class="pct-cell" data-farm="${r.farm.replace(/"/g,'&quot;')}" title="คลิกเพื่อ${excluded?'นำกลับมาคิด':'ไม่นำมาคิด'}ใน % รวม">
+            ${excluded?'⬜':'✅'} ${pct===null?'-':pct.toFixed(1)+'%'}
+          </td>
           <td style="${r.missingDuration>0?'color:var(--accent2);font-weight:700;':''}">${r.missingDuration||'-'}</td>
-        </tr>`).join('')}
+        </tr>`;
+        }).join('')}
       </tbody>
       <tfoot>
         <tr style="font-weight:700;border-top:2px solid var(--border);">
@@ -1467,15 +1485,25 @@ function renderAdminReport() {
           ${ALL_STATUSES.map(s => `<td>${totalByStatus[s]||0}</td>`).join('')}
           <td colspan="3"></td>
           <td style="color:var(--red);">${totalOver1day}</td>
+          <td style="color:var(--accent);" title="คำนวณจากผลรวมของฟาร์มที่เลือกไว้เท่านั้น (✅)">${totalPct===null?'-':totalPct.toFixed(1)+'%'}</td>
           <td style="color:var(--accent2);">${totalMissingDuration||'-'}</td>
         </tr>
       </tfoot>
     </table>`;
+
+  document.querySelectorAll('.pct-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const farm = cell.dataset.farm;
+      if (percentExcludedFarms.has(farm)) percentExcludedFarms.delete(farm);
+      else percentExcludedFarms.add(farm);
+      renderAdminReport();
+    });
+  });
 }
 
 /* ---- Excel export ---- */
 document.getElementById('adminExportBtn').addEventListener('click', () => {
-  const { rows } = computeAdminStats();
+  const { rows, totalCount, totalOver1day, totalMissingDuration, totalByStatus } = computeAdminStats();
   const { from, to } = getAdminRange();
   if (!rows.length) { alert('ไม่มีข้อมูลในช่วงเวลานี้'); return; }
   const wb = XLSX.utils.book_new();
@@ -1486,8 +1514,26 @@ document.getElementById('adminExportBtn').addEventListener('click', () => {
     'เวลาซ่อมเร็วสุด (ชม.)': r.minHrs===null?'':Math.round(r.minHrs*100)/100,
     'เวลาซ่อมเฉลี่ย (ชม.)': r.avgHrs===null?'':Math.round(r.avgHrs*100)/100,
     'จำนวนครั้งเกิน 1 วัน': r.over1day,
+    '% เกิน 1 วัน': r.count>0 ? Math.round((r.over1day/r.count*100)*100)/100 : '',
+    'นับรวมใน % รวม': percentExcludedFarms.has(r.farm) ? 'ไม่นับ' : 'นับ',
     'เสร็จสิ้นแต่วันที่ไม่ครบ': r.missingDuration
   }));
+
+  const includedRows = rows.filter(r => !percentExcludedFarms.has(r.farm));
+  const sumCountIncluded = includedRows.reduce((s,r) => s + r.count, 0);
+  const sumOver1dayIncluded = includedRows.reduce((s,r) => s + r.over1day, 0);
+  const totalPct = sumCountIncluded > 0 ? Math.round((sumOver1dayIncluded/sumCountIncluded*100)*100)/100 : '';
+
+  sheetRows.push({
+    'ฟาร์ม': 'รวมทั้งหมด', 'แจ้งทั้งหมด': totalCount,
+    ...Object.fromEntries(ALL_STATUSES.map(s => [s, totalByStatus[s]||0])),
+    'เวลาซ่อมนานสุด (ชม.)': '', 'เวลาซ่อมเร็วสุด (ชม.)': '', 'เวลาซ่อมเฉลี่ย (ชม.)': '',
+    'จำนวนครั้งเกิน 1 วัน': totalOver1day,
+    '% เกิน 1 วัน': totalPct,
+    'นับรวมใน % รวม': '(เฉพาะฟาร์มที่นับ)',
+    'เสร็จสิ้นแต่วันที่ไม่ครบ': totalMissingDuration
+  });
+
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), 'สรุปรายฟาร์ม');
   XLSX.writeFile(wb, `สรุปแจ้งซ่อม_${isoDate(from)}_ถึง_${isoDate(to)}.xlsx`);
 });

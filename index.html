@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ระบบแจ้งซ่อม - ฟาร์มไก่</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg:#0f1620; --panel:#161f2c; --panel2:#1c2734; --border:#2a3a4c;
@@ -305,10 +306,33 @@
 
 <script>
 /* =========================================================
-   CONFIG
+   CONFIG — Supabase
    ========================================================= */
-const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwWUw58foq7MThLIbBgftBRQ03Usw4wRpSePqA8Lz8VDfCcse-7dCl7gfo0vqyzNOm7/exec';
-let APPS_SCRIPT_URL = localStorage.getItem('apps_script_url') || DEFAULT_APPS_SCRIPT_URL;
+const SUPABASE_URL = 'https://yxecmomjktxjwjolgwui.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZWNtb21qa3R4andqb2xnd3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0NjcyNTUsImV4cCI6MjEwMzA0MzI1NX0.5ae_GdZ9DMy9HQrLZK2LgbxW5LxoNh1kysrN-GTv9Sk';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ===== Telegram (ไม่บังคับ) =====
+ * ⚠️ ข้อควรระวัง: หน้านี้เป็น static HTML ล้วนๆ ไม่มี backend ซ่อน Token แล้ว
+ * ถ้าใส่ Token ตรงนี้ ใครก็ตามที่เปิดดู source code ของหน้าเว็บจะเห็น Token ได้
+ * (ต่างจากตอนใช้ Apps Script ที่ Token ถูกซ่อนไว้ฝั่งเซิร์ฟเวอร์)
+ * ถ้ากังวลเรื่องนี้ แนะนำเว้นว่างไว้ (ระบบจะข้ามการแจ้งเตือนไปเฉยๆ) แล้วบอกผมให้ตั้ง
+ * Supabase Edge Function แยกไว้ส่ง Telegram แทน จะปลอดภัยกว่า
+ */
+const TELEGRAM_BOT_TOKEN = '';
+const TELEGRAM_CHAT_ID = '';
+const SITE_URL = '';
+
+async function sendTelegramMessage(text, buttonUrl, buttonLabel) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    const payload = { chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' };
+    if (buttonUrl) payload.reply_markup = { inline_keyboard: [[{ text: buttonLabel || 'เปิดหน้าเว็บ', url: buttonUrl }]] };
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+  } catch (err) { console.error('Telegram send failed', err); }
+}
 
 let FARMS = [];
 
@@ -320,13 +344,13 @@ let filterState = { farm:'', status:'', search:'' };
 let openTicketId = null;
 
 /* =========================================================
-   LOAD FARMS (from Google Sheet) & populate selects
+   LOAD FARMS (from Supabase) & populate selects
    ========================================================= */
 async function loadFarms() {
   try {
-    const res = await fetch(APPS_SCRIPT_URL + '?type=farms');
-    const json = await res.json();
-    if (json.ok) FARMS = json.farms;
+    const { data, error } = await sb.from('farms').select('farm_name').order('farm_name');
+    if (error) throw error;
+    FARMS = data.map(r => r.farm_name);
   } catch (err) {
     console.error('loadFarms failed', err);
   }
@@ -468,42 +492,21 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 });
 
 /* =========================================================
-   SETTINGS
+   SETTINGS (ไม่จำเป็นแล้ว เพราะ Supabase ฝังไว้ในไฟล์ตรงๆ — เก็บปุ่มรีเฟรชไว้ใช้)
    ========================================================= */
-const settingsModal = document.getElementById('settingsModal');
-document.getElementById('settingsBtn').addEventListener('click', () => {
-  document.getElementById('urlInput').value = APPS_SCRIPT_URL;
-  settingsModal.classList.add('show');
-});
-document.getElementById('cancelSettings').addEventListener('click', () => settingsModal.classList.remove('show'));
-document.getElementById('resetDefaultSettings').addEventListener('click', () => {
-  localStorage.removeItem('apps_script_url');
-  APPS_SCRIPT_URL = DEFAULT_APPS_SCRIPT_URL;
-  document.getElementById('urlInput').value = APPS_SCRIPT_URL;
-  settingsModal.classList.remove('show');
-  loadTickets();
-});
-document.getElementById('saveSettings').addEventListener('click', () => {
-  const v = document.getElementById('urlInput').value.trim();
-  APPS_SCRIPT_URL = v;
-  localStorage.setItem('apps_script_url', v);
-  settingsModal.classList.remove('show');
-  loadTickets();
-});
+document.getElementById('settingsBtn').style.display = 'none';
 document.getElementById('refreshBtn').addEventListener('click', loadTickets);
 
 /* =========================================================
-   DATA LOAD / SAVE
+   DATA LOAD / SAVE — Supabase
    ========================================================= */
 async function loadTickets() {
   const statusEl = document.getElementById('syncStatus');
   statusEl.textContent = 'กำลังโหลด...'; statusEl.className='';
   try {
-    const res = await fetch(APPS_SCRIPT_URL + '?type=tickets');
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'load failed');
-    TICKETS = json.tickets.map(t => ({...t}));
-    TICKETS.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    const { data, error } = await sb.from('tickets').select('*').order('created_at', { ascending:false });
+    if (error) throw error;
+    TICKETS = data;
     statusEl.textContent = `เชื่อมต่อสำเร็จ • ${TICKETS.length} งาน`;
     statusEl.className = 'ok';
     renderTickets();
@@ -514,24 +517,131 @@ async function loadTickets() {
   }
 }
 
+function nowIso() { return new Date().toISOString(); }
+function formatHistoryLine(fromStatus, toStatus, by) {
+  const ts = new Date().toISOString().slice(0,16).replace('T',' ');
+  const arrow = fromStatus ? `${fromStatus} -> ${toStatus}` : `สร้างงาน: ${toStatus}`;
+  return ts + ' | ' + arrow + (by ? ' | โดย ' + by : '');
+}
+
+/* postAction: ตัวกลางเดียว รับ payload รูปแบบเดิม {action, ...} แล้วสั่งงาน Supabase
+   ที่เก็บ interface นี้ไว้เหมือนเดิม เพื่อไม่ต้องแก้โค้ดจุดอื่นที่เรียกใช้ทั่วทั้งไฟล์ */
 async function postAction(payload) {
   const statusEl = document.getElementById('syncStatus');
   statusEl.textContent = 'กำลังบันทึก...'; statusEl.className='';
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method:'POST',
-      headers: { 'Content-Type':'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || 'save failed');
+    let result;
+    switch (payload.action) {
+      case 'createTicket': result = await doSbCreateTicket(payload.ticket); break;
+      case 'claimTicket': result = await doSbClaimTicket(payload); break;
+      case 'updateTicketStatus': result = await doSbUpdateTicketStatus(payload); break;
+      case 'addFarm': result = await doSbAddFarm(payload); break;
+      case 'renameFarm': result = await doSbRenameFarm(payload); break;
+      case 'deleteFarm': result = await doSbDeleteFarm(payload); break;
+      default: throw new Error('unknown action: ' + payload.action);
+    }
+    if (!result.ok) throw new Error(result.error || 'save failed');
     statusEl.textContent = 'บันทึกสำเร็จ'; statusEl.className='ok';
-    return json;
+    return result;
   } catch (err) {
     statusEl.textContent = 'บันทึกไม่สำเร็จ: ' + err.message; statusEl.className='err';
     alert('บันทึกไม่สำเร็จ: ' + err.message);
     return null;
   }
+}
+
+async function doSbCreateTicket(t) {
+  const history = formatHistoryLine('', 'รอรับเรื่อง', t.reporter_name || '');
+  const { data, error } = await sb.from('tickets').insert({
+    farm: t.farm, house_no: t.house_no, category: t.category, description: t.description,
+    reporter_name: t.reporter_name, reporter_contact: t.reporter_contact,
+    status: 'รอรับเรื่อง', history
+  }).select().single();
+  if (error) return { ok:false, error: error.message };
+
+  sendTelegramMessage(
+    `🆕 <b>แจ้งซ่อมใหม่ #${data.ticket_no}</b>\n` +
+    `🏠 ฟาร์ม: ${t.farm} • เล้า ${t.house_no || '-'}\n` +
+    `🔧 ระบบ: ${t.category}\n` +
+    `📝 อาการ: ${t.description}\n` +
+    `👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_contact || '-'})`,
+    SITE_URL ? (SITE_URL + '?view=list') : '', '👷 เข้าไปรับงานนี้'
+  );
+  return { ok:true, id: data.id, ticket_no: data.ticket_no };
+}
+
+async function doSbClaimTicket(body) {
+  const { data: row, error: e1 } = await sb.from('tickets').select('status, history').eq('id', body.id).single();
+  if (e1) return { ok:false, error: e1.message };
+  const now = nowIso();
+  const newHistory = (row.history || '') + '\n' + formatHistoryLine(row.status, 'จ่ายงาน', body.assignee_name || '');
+  const { error } = await sb.from('tickets').update({
+    status: 'จ่ายงาน', assignee_name: body.assignee_name || '', assignee_contact: body.assignee_contact || '',
+    claimed_at: now, updated_at: now, history: newHistory
+  }).eq('id', body.id);
+  if (error) return { ok:false, error: error.message };
+  return { ok:true };
+}
+
+async function doSbUpdateTicketStatus(body) {
+  const { data: row, error: e1 } = await sb.from('tickets').select('ticket_no, farm, house_no, status, history').eq('id', body.id).single();
+  if (e1) return { ok:false, error: e1.message };
+
+  if (body.status === 'เสร็จสิ้น' && (!body.parts_used || !body.solution || !body.prevention)) {
+    return { ok:false, error:'ต้องกรอกอะไหล่ที่ใช้ วิธีแก้ไข และแนวทางป้องกัน ก่อนปิดงาน' };
+  }
+
+  const now = nowIso();
+  const update = {
+    status: body.status, updated_at: now,
+    history: (row.history || '') + '\n' + formatHistoryLine(row.status, body.status, body.by || '')
+  };
+  if (body.status === 'เสร็จสิ้น') {
+    update.parts_used = body.parts_used;
+    update.solution = body.solution;
+    update.prevention = body.prevention;
+    update.completed_at = now;
+  }
+  const { error } = await sb.from('tickets').update(update).eq('id', body.id);
+  if (error) return { ok:false, error: error.message };
+
+  if (body.status === 'เสร็จสิ้น') {
+    sendTelegramMessage(
+      `✅ <b>งานซ่อมเสร็จสิ้น #${row.ticket_no}</b>\n` +
+      `🏠 ฟาร์ม: ${row.farm} • เล้า ${row.house_no || '-'}\n` +
+      `🔩 อะไหล่ที่ใช้: ${body.parts_used}\n` +
+      `🛠 วิธีแก้ไข: ${body.solution}\n` +
+      `🛡 แนวทางป้องกัน: ${body.prevention}`
+    );
+  }
+  return { ok:true };
+}
+
+async function doSbAddFarm(body) {
+  const name = (body.name || '').trim();
+  if (!name) return { ok:false, error:'กรุณาระบุชื่อฟาร์ม' };
+  if (FARMS.includes(name)) return { ok:false, error:'มีฟาร์มชื่อนี้อยู่แล้ว' };
+  const { error } = await sb.from('farms').insert({ farm_name: name });
+  if (error) return { ok:false, error: error.message };
+  return { ok:true };
+}
+
+async function doSbRenameFarm(body) {
+  const { oldName, newName } = body;
+  if (!oldName || !newName) return { ok:false, error:'ข้อมูลไม่ครบ' };
+  const { error: e1 } = await sb.from('farms').update({ farm_name: newName }).eq('farm_name', oldName);
+  if (e1) return { ok:false, error: e1.message };
+  // cascade rename: อัปเดตชื่อฟาร์มในงานซ่อมเดิมที่เคยผูกกับชื่อนี้ด้วย
+  const { error: e2 } = await sb.from('tickets').update({ farm: newName }).eq('farm', oldName);
+  if (e2) return { ok:false, error: e2.message };
+  return { ok:true };
+}
+
+async function doSbDeleteFarm(body) {
+  const { error } = await sb.from('farms').delete().eq('farm_name', body.name);
+  if (error) return { ok:false, error: error.message };
+  // หมายเหตุ: ไม่ลบ/แก้ข้อมูลงานซ่อมเดิมที่เคยอ้างอิงฟาร์มนี้ เพื่อไม่ให้ประวัติข้อมูลหายไป
+  return { ok:true };
 }
 
 /* =========================================================

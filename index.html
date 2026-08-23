@@ -11,12 +11,13 @@
     --bg:#0f1620; --panel:#161f2c; --panel2:#1c2734; --border:#2a3a4c;
     --text:#e7edf3; --muted:#93a4b8; --accent:#4fb3ff; --accent2:#ffb454;
     --green:#4fd18a; --red:#ff6b6b; --purple:#b388ff;
+    --header-bg1:#16222f; --header-bg2:#101a24;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
   html,body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI","Sarabun",Tahoma,sans-serif; }
   .app { max-width:520px; margin:0 auto; min-height:100vh; padding-bottom:78px; position:relative; }
 
-  header { padding:16px 16px 12px; background:linear-gradient(135deg,#16222f,#101a24); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; }
+  header { padding:16px 16px 12px; background:linear-gradient(135deg,var(--header-bg1),var(--header-bg2)); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:40; }
   header .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
   header h1 { margin:0; font-size:18px; }
   header .sub { color:var(--muted); font-size:12px; margin-top:2px; }
@@ -174,7 +175,9 @@
     --bg:#f3f5f8; --panel:#ffffff; --panel2:#eef1f5; --border:#d9e0e7;
     --text:#1c2733; --muted:#5c6b7a; --accent:#1f79cf; --accent2:#b96e10;
     --green:#1c9463; --red:#d4453f; --purple:#7057c9;
+    --header-bg1:#ffffff; --header-bg2:#e9eef4;
   }
+  body.light-mode .icon-btn { box-shadow:0 1px 2px rgba(0,0,0,0.06); }
   body.light-mode .submit-btn,
   body.light-mode .btn-primary { color:#ffffff; }
   body.light-mode .status-btn.current { color:var(--accent); }
@@ -205,11 +208,38 @@
   body.pc-mode .ticket-card { margin-bottom:0; }
 
   body.pc-mode .pin-gate { padding:70px 10px; }
+
+  /* ===== Sticky top bar (header + nav together) for PC mode ===== */
+  #topBarWrap { position:relative; z-index:40; }
+  body.pc-mode #topBarWrap { position:sticky; top:0; background:var(--panel); }
+  body.pc-mode #topBarWrap header { position:static; }
+
+  /* ===== Admin view ===== */
+  .admin-daterow { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+  .admin-daterow > div { display:flex; flex-direction:column; }
+  .form-input { padding:9px 11px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13.5px; font-family:inherit; }
+  .admin-daterow .chip-btn { height:38px; align-self:end; }
+  .stats-row { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; }
+  .stats-row .stat-card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 18px; min-width:140px; }
+  .stats-row .stat-card .num { font-size:20px; font-weight:800; }
+  .stats-row .stat-card .label { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .chart-card-title-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .chart-card-title-row .chart-card-title { margin-bottom:0; }
+  .table-wrap-admin { overflow-x:auto; }
+  .table-wrap-admin table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .table-wrap-admin th { text-align:left; padding:9px 10px; background:var(--panel2); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .table-wrap-admin td { padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .bar-chart-row { margin-bottom:12px; }
+  .bar-chart-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .bar-chart-track { height:10px; background:var(--panel2); border-radius:5px; overflow:hidden; display:flex; }
+  .bar-chart-fill { height:100%; }
+  body.pc-mode .admin-daterow, body.pc-mode .table-wrap-admin { max-width:100%; }
 </style>
 </head>
 <body>
 <div class="app">
 
+  <div id="topBarWrap">
   <header>
     <div class="row">
       <div>
@@ -224,6 +254,13 @@
       </div>
     </div>
   </header>
+
+  <div class="bottom-nav">
+    <button class="nav-btn active" data-view="report"><span class="icon">📨</span>แจ้งซ่อม</button>
+    <button class="nav-btn" data-view="list"><span class="icon">📋</span>รายการงานซ่อม</button>
+    <button class="nav-btn" data-view="admin"><span class="icon">📈</span>Admin</button>
+  </div>
+  </div>
 
   <!-- ============ VIEW 1: REPORT FORM ============ -->
   <div class="view active" id="view-report">
@@ -329,10 +366,62 @@
     </div>
   </div>
 
-  <div class="bottom-nav">
-    <button class="nav-btn active" data-view="report"><span class="icon">📨</span>แจ้งซ่อม</button>
-    <button class="nav-btn" data-view="list"><span class="icon">📋</span>รายการงานซ่อม</button>
+  <!-- ============ VIEW 3: ADMIN (full access + analytics — separate login) ============ -->
+  <div class="view" id="view-admin">
+    <div id="adminPinGate" class="pin-gate">
+      <div class="pin-icon">🔐</div>
+      <div class="pin-title">สำหรับผู้ดูแลระบบเท่านั้น</div>
+      <div class="pin-sub">กรอกรหัสผ่าน Admin เพื่อเข้าดูรายงานสรุป</div>
+      <input type="password" inputmode="numeric" id="adminPinInput" class="pin-input" style="letter-spacing:6px; font-size:20px; width:220px;" placeholder="รหัสผ่าน">
+      <div class="pin-error" id="adminPinError"></div>
+      <button class="submit-btn" id="adminPinSubmitBtn">ปลดล็อก</button>
+    </div>
+
+    <div id="adminContent" style="display:none;">
+      <div class="lock-bar">
+        <span>🔓 Admin ปลดล็อกแล้ว</span>
+        <button class="icon-btn" id="adminLockBtn">🔒 ล็อก</button>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title">เลือกช่วงเวลาที่ต้องการดูข้อมูล</div>
+        <div class="admin-daterow">
+          <div><label class="complete-label">ตั้งแต่วันที่</label><input type="date" id="adminDateFrom" class="form-input"></div>
+          <div><label class="complete-label">ถึงวันที่</label><input type="date" id="adminDateTo" class="form-input"></div>
+          <button class="chip-btn" id="adminRangeBtn7">7 วันล่าสุด</button>
+          <button class="chip-btn" id="adminRangeBtn30">30 วันล่าสุด</button>
+          <button class="chip-btn" id="adminRangeBtnAll">ทั้งหมด</button>
+        </div>
+      </div>
+
+      <div class="stats-row" id="adminStatsRow"></div>
+
+      <div class="chart-card">
+        <div class="chart-card-title-row">
+          <div class="chart-card-title">จำนวนครั้งที่แจ้งซ่อม แยกตามฟาร์ม</div>
+          <button class="chip-btn" id="downloadChart1Btn">⬇ PNG</button>
+        </div>
+        <div id="adminChartCount"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title-row">
+          <div class="chart-card-title">เวลาซ่อมนานสุด / เร็วสุด แยกตามฟาร์ม (ชั่วโมง)</div>
+          <button class="chip-btn" id="downloadChart2Btn">⬇ PNG</button>
+        </div>
+        <div id="adminChartDuration"></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title-row">
+          <div class="chart-card-title">ตารางสรุปรายฟาร์ม</div>
+          <button class="chip-btn" id="adminExportBtn">⬇ Export Excel</button>
+        </div>
+        <div class="table-wrap-admin" id="adminTable"></div>
+      </div>
+    </div>
   </div>
+
 </div>
 
 <!-- Settings modal -->
@@ -533,6 +622,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
     if (btn.dataset.view === 'list') showListView();
+    if (btn.dataset.view === 'admin') showAdminView();
   });
 });
 
@@ -1060,6 +1150,230 @@ function renderDashboard() {
 }
 
 /* =========================================================
+   ADMIN (separate PIN, full analytics/reporting)
+   ========================================================= */
+const ADMIN_PIN = '1124120';
+function isAdminUnlocked() { return sessionStorage.getItem('admin_unlocked') === 'yes'; }
+function showAdminView() {
+  if (isAdminUnlocked()) {
+    document.getElementById('adminPinGate').style.display = 'none';
+    document.getElementById('adminContent').style.display = 'block';
+    renderAdminReport();
+  } else {
+    document.getElementById('adminPinGate').style.display = 'block';
+    document.getElementById('adminContent').style.display = 'none';
+    document.getElementById('adminPinInput').value = '';
+    document.getElementById('adminPinError').textContent = '';
+    setTimeout(() => document.getElementById('adminPinInput').focus(), 100);
+  }
+}
+function checkAdminPin() {
+  const val = document.getElementById('adminPinInput').value.trim();
+  if (val === ADMIN_PIN) {
+    sessionStorage.setItem('admin_unlocked', 'yes');
+    showAdminView();
+  } else {
+    document.getElementById('adminPinError').textContent = 'รหัสผ่านไม่ถูกต้อง';
+    document.getElementById('adminPinInput').value = '';
+  }
+}
+document.getElementById('adminPinSubmitBtn').addEventListener('click', checkAdminPin);
+document.getElementById('adminPinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkAdminPin(); });
+document.getElementById('adminLockBtn').addEventListener('click', () => {
+  sessionStorage.removeItem('admin_unlocked');
+  showAdminView();
+});
+
+/* ---- date range controls ---- */
+function isoDate(d) { return d.toISOString().slice(0,10); }
+function setAdminRange(days) {
+  const to = new Date();
+  const from = days === null ? null : new Date(Date.now() - days*86400000);
+  document.getElementById('adminDateTo').value = isoDate(to);
+  document.getElementById('adminDateFrom').value = from ? isoDate(from) : '2020-01-01';
+  renderAdminReport();
+}
+document.getElementById('adminRangeBtn7').addEventListener('click', () => setAdminRange(7));
+document.getElementById('adminRangeBtn30').addEventListener('click', () => setAdminRange(30));
+document.getElementById('adminRangeBtnAll').addEventListener('click', () => setAdminRange(null));
+document.getElementById('adminDateFrom').addEventListener('change', renderAdminReport);
+document.getElementById('adminDateTo').addEventListener('change', renderAdminReport);
+
+const ADMIN_BAR_COLORS = ['#4fb3ff','#ffb454','#4fd18a','#ff6b6b','#b388ff','#5ee6d8','#f0a6d0','#c9d95e'];
+
+function getAdminRange() {
+  const fromVal = document.getElementById('adminDateFrom').value;
+  const toVal = document.getElementById('adminDateTo').value;
+  const from = fromVal ? new Date(fromVal + 'T00:00:00') : new Date('2020-01-01');
+  const to = toVal ? new Date(toVal + 'T23:59:59') : new Date();
+  return { from, to };
+}
+
+function computeAdminStats() {
+  const { from, to } = getAdminRange();
+  const scoped = TICKETS.filter(t => {
+    const d = new Date(t.created_at);
+    return d >= from && d <= to;
+  });
+
+  const byFarm = {};
+  FARMS.forEach(f => byFarm[f] = { farm:f, count:0, durations:[], over1day:0 });
+  scoped.forEach(t => {
+    if (!byFarm[t.farm]) byFarm[t.farm] = { farm:t.farm, count:0, durations:[], over1day:0 };
+    byFarm[t.farm].count++;
+    const hrs = durationHours(t.created_at, t.completed_at);
+    if (hrs !== null) {
+      byFarm[t.farm].durations.push(hrs);
+      if (hrs > 24) byFarm[t.farm].over1day++;
+    }
+  });
+
+  const rows = Object.values(byFarm).filter(r => r.count > 0).map(r => ({
+    farm: r.farm,
+    count: r.count,
+    maxHrs: r.durations.length ? Math.max(...r.durations) : null,
+    minHrs: r.durations.length ? Math.min(...r.durations) : null,
+    avgHrs: r.durations.length ? r.durations.reduce((a,b)=>a+b,0)/r.durations.length : null,
+    over1day: r.over1day,
+    completedCount: r.durations.length
+  }));
+  rows.sort((a,b) => b.count - a.count);
+
+  const totalCount = scoped.length;
+  const allDurations = rows.flatMap(r => byFarm[r.farm].durations);
+  const totalOver1day = rows.reduce((s,r) => s + r.over1day, 0);
+
+  return { rows, totalCount, totalOver1day, scoped };
+}
+
+function renderAdminReport() {
+  const { rows, totalCount, totalOver1day } = computeAdminStats();
+
+  document.getElementById('adminStatsRow').innerHTML = `
+    <div class="stat-card"><div class="num">${totalCount}</div><div class="label">จำนวนงานแจ้งซ่อมทั้งหมด</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--red)">${totalOver1day}</div><div class="label">ครั้งที่ใช้เวลาซ่อมเกิน 1 วัน</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--accent)">${rows.length}</div><div class="label">จำนวนฟาร์มที่มีงานในช่วงนี้</div></div>
+  `;
+
+  // ---- Chart 1: count per farm ----
+  const maxCount = Math.max(...rows.map(r=>r.count), 1);
+  document.getElementById('adminChartCount').innerHTML = rows.map((r,i) => `
+    <div class="bar-chart-row">
+      <div class="bar-chart-label"><span>${r.farm}</span><b>${r.count} ครั้ง</b></div>
+      <div class="bar-chart-track"><div class="bar-chart-fill" style="width:${(r.count/maxCount*100).toFixed(0)}%; background:${ADMIN_BAR_COLORS[i % ADMIN_BAR_COLORS.length]}"></div></div>
+    </div>`).join('') || `<div class="empty-state">ไม่มีข้อมูลในช่วงเวลานี้</div>`;
+
+  // ---- Chart 2: max/min duration per farm ----
+  const maxHrsAll = Math.max(...rows.map(r => r.maxHrs || 0), 1);
+  document.getElementById('adminChartDuration').innerHTML = rows.filter(r=>r.maxHrs !== null).map((r,i) => `
+    <div class="bar-chart-row">
+      <div class="bar-chart-label"><span>${r.farm}</span><b>นานสุด ${r.maxHrs.toFixed(1)} ชม. / เร็วสุด ${r.minHrs.toFixed(1)} ชม.</b></div>
+      <div class="bar-chart-track">
+        <div class="bar-chart-fill" style="width:${(r.maxHrs/maxHrsAll*100).toFixed(0)}%; background:${ADMIN_BAR_COLORS[i % ADMIN_BAR_COLORS.length]}"></div>
+      </div>
+    </div>`).join('') || `<div class="empty-state">ยังไม่มีงานที่เสร็จสิ้นในช่วงเวลานี้</div>`;
+
+  // ---- Table ----
+  document.getElementById('adminTable').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>ฟาร์ม</th><th>จำนวนครั้งที่แจ้ง</th><th>เสร็จแล้ว</th>
+        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน (ครั้ง)</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td>${r.farm}</td><td>${r.count}</td><td>${r.completedCount}</td>
+          <td>${r.maxHrs===null?'-':r.maxHrs.toFixed(1)}</td>
+          <td>${r.minHrs===null?'-':r.minHrs.toFixed(1)}</td>
+          <td>${r.avgHrs===null?'-':r.avgHrs.toFixed(1)}</td>
+          <td style="${r.over1day>0?'color:var(--red);font-weight:700;':''}">${r.over1day}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+/* ---- Excel export ---- */
+document.getElementById('adminExportBtn').addEventListener('click', () => {
+  const { rows } = computeAdminStats();
+  const { from, to } = getAdminRange();
+  if (!rows.length) { alert('ไม่มีข้อมูลในช่วงเวลานี้'); return; }
+  const wb = XLSX.utils.book_new();
+  const sheetRows = rows.map(r => ({
+    'ฟาร์ม': r.farm, 'จำนวนครั้งที่แจ้งซ่อม': r.count, 'จำนวนที่เสร็จแล้ว': r.completedCount,
+    'เวลาซ่อมนานสุด (ชม.)': r.maxHrs===null?'':Math.round(r.maxHrs*100)/100,
+    'เวลาซ่อมเร็วสุด (ชม.)': r.minHrs===null?'':Math.round(r.minHrs*100)/100,
+    'เวลาซ่อมเฉลี่ย (ชม.)': r.avgHrs===null?'':Math.round(r.avgHrs*100)/100,
+    'จำนวนครั้งเกิน 1 วัน': r.over1day
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), 'สรุปรายฟาร์ม');
+  XLSX.writeFile(wb, `สรุปแจ้งซ่อม_${isoDate(from)}_ถึง_${isoDate(to)}.xlsx`);
+});
+
+/* ---- PNG chart export (renders the bar-chart HTML into an SVG, then to PNG) ---- */
+function chartContainerToPng(containerId, title, filename) {
+  const container = document.getElementById(containerId);
+  const rowsEls = container.querySelectorAll('.bar-chart-row');
+  if (!rowsEls.length) { alert('ไม่มีข้อมูลกราฟให้ดาวน์โหลด'); return; }
+
+  const width = 760, rowH = 46, padTop = 60, padBottom = 30;
+  const height = padTop + rowsEls.length * rowH + padBottom;
+  const isLight = document.body.classList.contains('light-mode');
+  const bg = isLight ? '#ffffff' : '#161f2c';
+  const textColor = isLight ? '#1c2733' : '#e7edf3';
+  const trackColor = isLight ? '#eef1f5' : '#1c2734';
+
+  let svgRows = '';
+  rowsEls.forEach((rowEl, i) => {
+    const label = rowEl.querySelector('.bar-chart-label span').textContent;
+    const value = rowEl.querySelector('.bar-chart-label b').textContent;
+    const fill = rowEl.querySelector('.bar-chart-fill');
+    const pct = parseFloat(fill.style.width) || 0;
+    const color = fill.style.background || '#4fb3ff';
+    const y = padTop + i * rowH;
+    const barW = (width - 40) * (pct/100);
+    svgRows += `
+      <text x="20" y="${y}" fill="${textColor}" font-size="13" font-family="Segoe UI, Sarabun, sans-serif">${escapeXml(label)}</text>
+      <text x="${width-20}" y="${y}" fill="${textColor}" font-size="12" font-weight="700" text-anchor="end" font-family="Segoe UI, Sarabun, sans-serif">${escapeXml(value)}</text>
+      <rect x="20" y="${y+8}" width="${width-40}" height="10" rx="5" fill="${trackColor}"/>
+      <rect x="20" y="${y+8}" width="${barW}" height="10" rx="5" fill="${color}"/>
+    `;
+  });
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <rect width="${width}" height="${height}" fill="${bg}"/>
+    <text x="20" y="30" fill="${textColor}" font-size="16" font-weight="700" font-family="Segoe UI, Sarabun, sans-serif">${escapeXml(title)}</text>
+    ${svgRows}
+  </svg>`;
+
+  const img = new Image();
+  const svgBlob = new Blob([svg], { type:'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width * 2; canvas.height = height * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2,2);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    });
+  };
+  img.src = url;
+}
+function escapeXml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.getElementById('downloadChart1Btn').addEventListener('click', () => {
+  chartContainerToPng('adminChartCount', 'จำนวนครั้งที่แจ้งซ่อม แยกตามฟาร์ม', 'chart_จำนวนแจ้งซ่อม.png');
+});
+document.getElementById('downloadChart2Btn').addEventListener('click', () => {
+  chartContainerToPng('adminChartDuration', 'เวลาซ่อมนานสุด-เร็วสุด แยกตามฟาร์ม', 'chart_เวลาซ่อม.png');
+});
+
+/* =========================================================
    EXPORT
    ========================================================= */
 document.getElementById('exportTicketsBtn').addEventListener('click', () => {
@@ -1095,6 +1409,10 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
    INIT
    ========================================================= */
 (async function init() {
+  const toEl = document.getElementById('adminDateTo');
+  const fromEl = document.getElementById('adminDateFrom');
+  toEl.value = isoDate(new Date());
+  fromEl.value = isoDate(new Date(Date.now() - 30*86400000));
   await loadFarms();
   await loadTickets();
 })();

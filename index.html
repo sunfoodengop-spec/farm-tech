@@ -238,6 +238,14 @@
   .pin-settings-row:last-of-type { margin-bottom:0; }
   .pin-settings-form { display:flex; gap:8px; }
   .pin-settings-form input { flex:1; }
+  .issue-row { background:rgba(255,180,84,0.06); border:1px solid rgba(255,180,84,0.3); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .issue-row-top { display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-bottom:8px; }
+  .issue-row-title { font-weight:700; }
+  .issue-row-desc { font-size:12.5px; color:var(--muted); margin-bottom:10px; }
+  .issue-date-form { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; }
+  .issue-date-form > div { display:flex; flex-direction:column; }
+  .issue-date-form label { font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .issue-date-form input { padding:8px 9px; border-radius:6px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; }
 </style>
 </head>
 <body>
@@ -420,6 +428,14 @@
       </div>
 
       <div class="stats-row" id="adminStatsRow"></div>
+
+      <div class="chart-card" id="dataIssuesCard" style="display:none;">
+        <div class="chart-card-title" style="color:var(--accent2);">⚠️ งาน "เสร็จสิ้น" ที่ข้อมูลวันที่ไม่ครบ (ต้องแก้ก่อนสถิติจะถูกต้อง)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+          รายการนี้ตรวจจากทุกงานในระบบ ไม่ผูกกับช่วงเวลาที่เลือกด้านบน — กรอกวันที่ที่ขาดแล้วกดบันทึกทีละรายการ
+        </div>
+        <div id="dataIssuesList"></div>
+      </div>
 
       <div class="chart-card">
         <div class="chart-card-title-row">
@@ -1289,6 +1305,8 @@ function getAdminRange() {
   return { from, to };
 }
 
+const ALL_STATUSES = ['รอรับเรื่อง', ...STATUS_LIST]; // รอรับเรื่อง, จ่ายงาน, รออะไหล่, กำลังดำเนินการ, เสร็จสิ้น
+
 function computeAdminStats() {
   const { from, to } = getAdminRange();
   const scoped = TICKETS.filter(t => {
@@ -1296,43 +1314,114 @@ function computeAdminStats() {
     return d >= from && d <= to;
   });
 
+  function blankFarmRow(f) {
+    const statusCounts = {};
+    ALL_STATUSES.forEach(s => statusCounts[s] = 0);
+    return { farm:f, count:0, statusCounts, durations:[], over1day:0, missingDuration:0 };
+  }
+
   const byFarm = {};
-  FARMS.forEach(f => byFarm[f] = { farm:f, count:0, durations:[], over1day:0 });
+  FARMS.forEach(f => byFarm[f] = blankFarmRow(f));
   scoped.forEach(t => {
-    if (!byFarm[t.farm]) byFarm[t.farm] = { farm:t.farm, count:0, durations:[], over1day:0 };
-    byFarm[t.farm].count++;
+    if (!byFarm[t.farm]) byFarm[t.farm] = blankFarmRow(t.farm);
+    const r = byFarm[t.farm];
+    r.count++;
+    if (r.statusCounts[t.status] === undefined) r.statusCounts[t.status] = 0; // เผื่อสถานะแปลกที่ไม่อยู่ในลิสต์
+    r.statusCounts[t.status]++;
     const hrs = durationHours(t.created_at, t.completed_at);
     if (hrs !== null) {
-      byFarm[t.farm].durations.push(hrs);
-      if (hrs > 24) byFarm[t.farm].over1day++;
+      r.durations.push(hrs);
+      if (hrs > 24) r.over1day++;
+    } else if (t.status === 'เสร็จสิ้น') {
+      r.missingDuration++; // งานที่สถานะ "เสร็จสิ้น" แต่ไม่มีวันที่ครบ คำนวณเวลาไม่ได้ — เอาไว้ตรวจสอบข้อมูล
     }
   });
 
   const rows = Object.values(byFarm).filter(r => r.count > 0).map(r => ({
     farm: r.farm,
     count: r.count,
+    statusCounts: r.statusCounts,
     maxHrs: r.durations.length ? Math.max(...r.durations) : null,
     minHrs: r.durations.length ? Math.min(...r.durations) : null,
     avgHrs: r.durations.length ? r.durations.reduce((a,b)=>a+b,0)/r.durations.length : null,
     over1day: r.over1day,
-    completedCount: r.durations.length
+    completedCount: r.statusCounts['เสร็จสิ้น'] || 0,
+    missingDuration: r.missingDuration
   }));
   rows.sort((a,b) => b.count - a.count);
 
   const totalCount = scoped.length;
-  const allDurations = rows.flatMap(r => byFarm[r.farm].durations);
   const totalOver1day = rows.reduce((s,r) => s + r.over1day, 0);
+  const totalMissingDuration = rows.reduce((s,r) => s + r.missingDuration, 0);
+  const totalByStatus = {};
+  ALL_STATUSES.forEach(s => totalByStatus[s] = rows.reduce((sum,r) => sum + (r.statusCounts[s]||0), 0));
 
-  return { rows, totalCount, totalOver1day, scoped };
+  return { rows, totalCount, totalOver1day, totalMissingDuration, totalByStatus, scoped };
+}
+
+/* ---- Data quality: find & fix "เสร็จสิ้น" tickets with missing dates (checked across ALL tickets, not just the selected range) ---- */
+function toDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function findDateIssues() {
+  return TICKETS.filter(t => t.status === 'เสร็จสิ้น' && durationHours(t.created_at, t.completed_at) === null);
+}
+
+function renderDataIssues() {
+  const issues = findDateIssues();
+  const card = document.getElementById('dataIssuesCard');
+  const listEl = document.getElementById('dataIssuesList');
+  if (!issues.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  listEl.innerHTML = issues.map(t => `
+    <div class="issue-row">
+      <div class="issue-row-top">
+        <span class="issue-row-title">#${t.ticket_no} — ${t.farm} • ${t.house_no}</span>
+        <span class="status-badge done">เสร็จสิ้น</span>
+      </div>
+      <div class="issue-row-desc">${t.category} — ${t.description}</div>
+      <div class="issue-date-form">
+        <div><label>วันที่แจ้ง (created_at)</label><input type="datetime-local" id="fix-created-${t.id}" value="${toDatetimeLocal(t.created_at)}"></div>
+        <div><label>วันที่เสร็จ (completed_at)</label><input type="datetime-local" id="fix-completed-${t.id}" value="${toDatetimeLocal(t.completed_at)}"></div>
+        <button class="claim-btn" id="fix-save-${t.id}">บันทึก</button>
+      </div>
+    </div>`).join('');
+
+  issues.forEach(t => {
+    document.getElementById(`fix-save-${t.id}`).addEventListener('click', () => doFixTicketDates(t.id));
+  });
+}
+
+async function doFixTicketDates(id) {
+  const createdVal = document.getElementById(`fix-created-${id}`).value;
+  const completedVal = document.getElementById(`fix-completed-${id}`).value;
+  if (!createdVal || !completedVal) { alert('กรุณากรอกวันที่ให้ครบทั้ง 2 ช่อง'); return; }
+  const created_at = new Date(createdVal).toISOString();
+  const completed_at = new Date(completedVal).toISOString();
+  if (new Date(completed_at) < new Date(created_at)) { alert('วันที่เสร็จต้องไม่มาก่อนวันที่แจ้ง'); return; }
+
+  const { error } = await sb.from('tickets').update({ created_at, completed_at }).eq('id', id);
+  if (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); return; }
+  await loadTickets(); // จะเรียก renderAdminReport ถ้าอยู่ในแท็บ Admin อยู่แล้วผ่าน renderDashboard/renderTickets — เรียกซ้ำให้ชัวร์ด้านล่าง
+  if (isAdminUnlocked()) renderAdminReport();
 }
 
 function renderAdminReport() {
-  const { rows, totalCount, totalOver1day } = computeAdminStats();
+  const { rows, totalCount, totalOver1day, totalMissingDuration, totalByStatus } = computeAdminStats();
+
+  renderDataIssues();
 
   document.getElementById('adminStatsRow').innerHTML = `
     <div class="stat-card"><div class="num">${totalCount}</div><div class="label">จำนวนงานแจ้งซ่อมทั้งหมด</div></div>
     <div class="stat-card"><div class="num" style="color:var(--red)">${totalOver1day}</div><div class="label">ครั้งที่ใช้เวลาซ่อมเกิน 1 วัน</div></div>
     <div class="stat-card"><div class="num" style="color:var(--accent)">${rows.length}</div><div class="label">จำนวนฟาร์มที่มีงานในช่วงนี้</div></div>
+    ${totalMissingDuration > 0 ? `<div class="stat-card"><div class="num" style="color:var(--accent2)">${totalMissingDuration}</div><div class="label">⚠️ เสร็จสิ้นแต่วันที่ไม่ครบ (คำนวณเวลาไม่ได้)</div></div>` : ''}
   `;
 
   // ---- Chart 1: count per farm ----
@@ -1353,22 +1442,34 @@ function renderAdminReport() {
       </div>
     </div>`).join('') || `<div class="empty-state">ยังไม่มีงานที่เสร็จสิ้นในช่วงเวลานี้</div>`;
 
-  // ---- Table ----
+  // ---- Table: ระบุครบทุกสถานะ เพื่อทวนสอบผลรวม ----
   document.getElementById('adminTable').innerHTML = `
     <table>
       <thead><tr>
-        <th>ฟาร์ม</th><th>จำนวนครั้งที่แจ้ง</th><th>เสร็จแล้ว</th>
-        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน (ครั้ง)</th>
+        <th>ฟาร์ม</th><th>แจ้งทั้งหมด</th>
+        ${ALL_STATUSES.map(s => `<th>${s}</th>`).join('')}
+        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน</th><th>⚠️ วันที่ไม่ครบ</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => `<tr>
-          <td>${r.farm}</td><td>${r.count}</td><td>${r.completedCount}</td>
+          <td>${r.farm}</td><td><b>${r.count}</b></td>
+          ${ALL_STATUSES.map(s => `<td>${r.statusCounts[s]||0}</td>`).join('')}
           <td>${r.maxHrs===null?'-':r.maxHrs.toFixed(1)}</td>
           <td>${r.minHrs===null?'-':r.minHrs.toFixed(1)}</td>
           <td>${r.avgHrs===null?'-':r.avgHrs.toFixed(1)}</td>
           <td style="${r.over1day>0?'color:var(--red);font-weight:700;':''}">${r.over1day}</td>
+          <td style="${r.missingDuration>0?'color:var(--accent2);font-weight:700;':''}">${r.missingDuration||'-'}</td>
         </tr>`).join('')}
       </tbody>
+      <tfoot>
+        <tr style="font-weight:700;border-top:2px solid var(--border);">
+          <td>รวมทั้งหมด</td><td>${totalCount}</td>
+          ${ALL_STATUSES.map(s => `<td>${totalByStatus[s]||0}</td>`).join('')}
+          <td colspan="3"></td>
+          <td style="color:var(--red);">${totalOver1day}</td>
+          <td style="color:var(--accent2);">${totalMissingDuration||'-'}</td>
+        </tr>
+      </tfoot>
     </table>`;
 }
 
@@ -1379,11 +1480,13 @@ document.getElementById('adminExportBtn').addEventListener('click', () => {
   if (!rows.length) { alert('ไม่มีข้อมูลในช่วงเวลานี้'); return; }
   const wb = XLSX.utils.book_new();
   const sheetRows = rows.map(r => ({
-    'ฟาร์ม': r.farm, 'จำนวนครั้งที่แจ้งซ่อม': r.count, 'จำนวนที่เสร็จแล้ว': r.completedCount,
+    'ฟาร์ม': r.farm, 'แจ้งทั้งหมด': r.count,
+    ...Object.fromEntries(ALL_STATUSES.map(s => [s, r.statusCounts[s]||0])),
     'เวลาซ่อมนานสุด (ชม.)': r.maxHrs===null?'':Math.round(r.maxHrs*100)/100,
     'เวลาซ่อมเร็วสุด (ชม.)': r.minHrs===null?'':Math.round(r.minHrs*100)/100,
     'เวลาซ่อมเฉลี่ย (ชม.)': r.avgHrs===null?'':Math.round(r.avgHrs*100)/100,
-    'จำนวนครั้งเกิน 1 วัน': r.over1day
+    'จำนวนครั้งเกิน 1 วัน': r.over1day,
+    'เสร็จสิ้นแต่วันที่ไม่ครบ': r.missingDuration
   }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), 'สรุปรายฟาร์ม');
   XLSX.writeFile(wb, `สรุปแจ้งซ่อม_${isoDate(from)}_ถึง_${isoDate(to)}.xlsx`);

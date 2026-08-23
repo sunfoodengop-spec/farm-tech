@@ -168,6 +168,43 @@
   .modal-actions { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
   .btn-primary { background:var(--accent); color:#08131d; border:none; padding:10px 16px; border-radius:8px; font-weight:700; cursor:pointer; }
   .btn-secondary { background:var(--panel2); color:var(--text); border:1px solid var(--border); padding:10px 16px; border-radius:8px; cursor:pointer; }
+
+  /* ===== Light mode ===== */
+  body.light-mode {
+    --bg:#f3f5f8; --panel:#ffffff; --panel2:#eef1f5; --border:#d9e0e7;
+    --text:#1c2733; --muted:#5c6b7a; --accent:#1f79cf; --accent2:#b96e10;
+    --green:#1c9463; --red:#d4453f; --purple:#7057c9;
+  }
+  body.light-mode .submit-btn,
+  body.light-mode .btn-primary { color:#ffffff; }
+  body.light-mode .status-btn.current { color:var(--accent); }
+
+  /* ===== PC mode (desktop-friendly layout) ===== */
+  body.pc-mode .app { max-width:1360px; padding-bottom:20px; }
+  body.pc-mode header { padding:16px 28px; }
+  body.pc-mode .view { padding:20px 28px 32px; }
+
+  body.pc-mode .bottom-nav {
+    position:static; max-width:100%; margin:0; border-top:none; border-bottom:1px solid var(--border);
+    justify-content:flex-start; gap:6px; padding:0 28px; background:var(--panel);
+  }
+  body.pc-mode .nav-btn { flex:none; flex-direction:row; gap:8px; padding:14px 22px; font-size:13.5px; }
+  body.pc-mode .nav-btn .icon { font-size:16px; }
+  body.pc-mode .nav-btn.active { border-bottom:2px solid var(--accent); }
+
+  body.pc-mode .report-grid { display:grid; grid-template-columns:440px 1fr; gap:32px; align-items:start; }
+  body.pc-mode .dash-section { margin-top:0; padding-top:0; border-top:none; }
+
+  body.pc-mode .add-card,
+  body.pc-mode .farm-manage-toggle,
+  body.pc-mode .farm-manage-box,
+  body.pc-mode .filter-bar,
+  body.pc-mode .export-bar { max-width:900px; }
+
+  body.pc-mode #ticketList { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:14px; align-items:start; }
+  body.pc-mode .ticket-card { margin-bottom:0; }
+
+  body.pc-mode .pin-gate { padding:70px 10px; }
 </style>
 </head>
 <body>
@@ -180,6 +217,8 @@
         <div class="sub">ฟาร์มไก่ • <span id="syncStatus">กำลังเชื่อมต่อ...</span></div>
       </div>
       <div style="display:flex; gap:6px;">
+        <button class="icon-btn" id="pcModeBtn" title="สลับโหมด PC/มือถือ">🖥</button>
+        <button class="icon-btn" id="themeBtn" title="สลับโหมดมืด/สว่าง">🌙</button>
         <button class="icon-btn" id="refreshBtn">🔄</button>
         <button class="icon-btn" id="settingsBtn">⚙</button>
       </div>
@@ -188,6 +227,8 @@
 
   <!-- ============ VIEW 1: REPORT FORM ============ -->
   <div class="view active" id="view-report">
+   <div class="report-grid">
+    <div class="report-form-col">
     <div id="reportSuccessArea"></div>
     <div class="field">
       <label>ฟาร์ม *</label>
@@ -221,8 +262,10 @@
       <input type="tel" id="rContact" placeholder="0812345678">
     </div>
     <button class="submit-btn" id="submitReportBtn">📨 แจ้งซ่อม</button>
+    </div>
 
     <!-- ===== Read-only status dashboard (visible to everyone, no login needed) ===== -->
+    <div class="report-dash-col">
     <div class="dash-section">
       <div class="dash-title">📊 สถานะงานซ่อมล่าสุด</div>
       <select id="dashFarmFilter" class="dash-filter"><option value="">ทุกฟาร์ม</option></select>
@@ -241,6 +284,8 @@
       <div class="dash-list-title">รายการงานที่ยังไม่เสร็จ</div>
       <div id="dashList"></div>
     </div>
+    </div>
+   </div>
   </div>
 
   <!-- ============ VIEW 2: TICKET LIST / MANAGE (PIN protected - technicians only) ============ -->
@@ -496,6 +541,37 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
    ========================================================= */
 document.getElementById('settingsBtn').style.display = 'none';
 document.getElementById('refreshBtn').addEventListener('click', loadTickets);
+
+/* =========================================================
+   THEME (dark/light) + PC MODE toggles
+   ========================================================= */
+const themeBtn = document.getElementById('themeBtn');
+const pcModeBtn = document.getElementById('pcModeBtn');
+
+function applyTheme(mode) {
+  document.body.classList.toggle('light-mode', mode === 'light');
+  themeBtn.textContent = mode === 'light' ? '☀️' : '🌙';
+  localStorage.setItem('theme_mode', mode);
+}
+function applyPcMode(on) {
+  document.body.classList.toggle('pc-mode', on);
+  pcModeBtn.textContent = on ? '📱' : '🖥';
+  pcModeBtn.title = on ? 'สลับกลับโหมดมือถือ' : 'สลับเป็นโหมด PC';
+  localStorage.setItem('pc_mode', on ? 'yes' : 'no');
+}
+
+themeBtn.addEventListener('click', () => {
+  const isLight = document.body.classList.contains('light-mode');
+  applyTheme(isLight ? 'dark' : 'light');
+});
+pcModeBtn.addEventListener('click', () => {
+  applyPcMode(!document.body.classList.contains('pc-mode'));
+});
+
+// โหลดค่าที่จำไว้ (ถ้าไม่เคยตั้ง ให้เดาโหมด PC เริ่มต้นจากความกว้างจอ)
+applyTheme(localStorage.getItem('theme_mode') || 'dark');
+const savedPcMode = localStorage.getItem('pc_mode');
+applyPcMode(savedPcMode ? savedPcMode === 'yes' : window.innerWidth >= 900);
 
 /* =========================================================
    DATA LOAD / SAVE — Supabase

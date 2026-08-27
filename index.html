@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>ระบบแจ้งซ่อม - ฟาร์มไก่</title>
+<title>ระบบแจ้งซ่อม</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -248,17 +248,44 @@
   .issue-date-form > div { display:flex; flex-direction:column; }
   .issue-date-form label { font-size:11px; color:var(--muted); margin-bottom:4px; }
   .issue-date-form input { padding:8px 9px; border-radius:6px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; }
+
+  /* ===== Unit select landing screen ===== */
+  .unit-select-screen { text-align:center; padding:60px 20px; max-width:520px; margin:0 auto; }
+  .unit-select-title { font-size:20px; font-weight:800; margin-bottom:6px; }
+  .unit-select-sub { color:var(--muted); font-size:13px; margin-bottom:30px; }
+  .unit-card { display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:14px; cursor:pointer; text-align:left; }
+  .unit-card:active { filter:brightness(0.95); }
+  .unit-card .unit-icon { font-size:32px; flex-shrink:0; }
+  .unit-card .unit-name { font-size:16px; font-weight:700; }
+  .unit-card .unit-desc { font-size:12px; color:var(--muted); margin-top:2px; }
+  .unit-admin-link { margin-top:26px; font-size:12.5px; color:var(--accent); cursor:pointer; text-decoration:underline; display:inline-block; }
+  .unit-badge-header { display:inline-flex; align-items:center; gap:6px; background:var(--panel2); border:1px solid var(--border); border-radius:20px; padding:3px 10px; font-size:11px; color:var(--accent); cursor:pointer; margin-right:6px; }
+  .admin-unit-filter { display:flex; gap:8px; flex-wrap:wrap; }
+  .admin-unit-chip { padding:8px 14px; border-radius:20px; font-size:12.5px; border:1px solid var(--border); background:var(--panel2); color:var(--muted); cursor:pointer; }
+  .admin-unit-chip.active { border-color:var(--accent); color:var(--accent); background:rgba(79,179,255,0.1); font-weight:700; }
+  .unit-tag { display:inline-block; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; white-space:nowrap; }
+  .unit-tag.broiler { background:rgba(79,179,255,0.15); color:var(--accent); }
+  .unit-tag.breeder { background:rgba(255,180,84,0.15); color:var(--accent2); }
 </style>
 </head>
 <body>
 <div class="app">
 
+  <!-- ============ UNIT SELECT LANDING SCREEN ============ -->
+  <div id="unitSelectScreen" class="unit-select-screen">
+    <div class="unit-select-title">🛠 ระบบแจ้งซ่อม</div>
+    <div class="unit-select-sub">กรุณาเลือกหน่วยงานที่ต้องการแจ้งซ่อม</div>
+    <div id="unitCardList"></div>
+    <div class="unit-admin-link" id="unitAdminBypassLink">🔐 เข้าสู่ระบบผู้ดูแลระบบ (ภาพรวมทุกหน่วยงาน)</div>
+  </div>
+
+  <div id="mainApp" style="display:none;">
   <div id="topBarWrap">
   <header>
     <div class="row">
       <div>
         <h1>🛠 ระบบแจ้งซ่อม</h1>
-        <div class="sub">ฟาร์มไก่ • <span id="syncStatus">กำลังเชื่อมต่อ...</span></div>
+        <div class="sub"><span id="unitBadge" class="unit-badge-header" style="display:none;"></span><span id="syncStatus">กำลังเชื่อมต่อ...</span></div>
       </div>
       <div style="display:flex; gap:6px;">
         <button class="icon-btn" id="pcModeBtn" title="สลับโหมด PC/มือถือ">🖥</button>
@@ -399,23 +426,15 @@
 
       <div class="farm-manage-toggle" id="pinManageToggle">🔑 ตั้งค่ารหัสผ่านระบบ <span id="pinManageArrow">▼</span></div>
       <div class="farm-manage-box" id="pinManageBox" style="display:none;">
-        <div class="pin-settings-row">
-          <label class="complete-label">รหัสผ่านสำหรับช่าง/วิศวกร (หน้า "รายการงานซ่อม")</label>
-          <div class="pin-settings-form">
-            <input type="text" id="newTechPinInput" class="form-input" placeholder="รหัสใหม่สำหรับช่าง" maxlength="12">
-            <button class="chip-btn" id="saveTechPinBtn">บันทึก</button>
-          </div>
-        </div>
-        <div class="pin-settings-row">
-          <label class="complete-label">รหัสผ่านสำหรับ Admin (หน้านี้)</label>
-          <div class="pin-settings-form">
-            <input type="text" id="newAdminPinInput" class="form-input" placeholder="รหัสใหม่สำหรับ Admin" maxlength="12">
-            <button class="chip-btn" id="saveAdminPinBtn">บันทึก</button>
-          </div>
-        </div>
+        <div id="pinSettingsList"></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">
           หลังเปลี่ยนแล้ว รหัสเดิมจะใช้ไม่ได้ทันที — บอกรหัสใหม่ให้ทีมที่เกี่ยวข้องทราบด้วย
         </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title">เลือกหน่วยงานที่ต้องการดู</div>
+        <div class="admin-unit-filter" id="adminUnitFilter"></div>
       </div>
 
       <div class="chart-card">
@@ -429,12 +448,26 @@
         </div>
       </div>
 
+      <div class="chart-card">
+        <div class="chart-card-title">เกณฑ์ระยะเวลาซ่อม (ใช้คำนวณคอลัมน์ "เกิน...ชม." ในตารางสรุป)</div>
+        <div class="admin-daterow">
+          <div>
+            <label class="complete-label">นับว่า "เกิน" เมื่อใช้เวลาซ่อมมากกว่า (ชั่วโมง)</label>
+            <input type="number" id="overThresholdInput" class="form-input" style="width:140px;" min="0.5" step="0.5" value="24">
+          </div>
+          <button class="chip-btn" id="overThresholdApplyBtn">ใช้เกณฑ์นี้</button>
+          <button class="chip-btn" id="overThresholdPreset24">24 ชม. (1 วัน)</button>
+          <button class="chip-btn" id="overThresholdPreset4">4 ชม.</button>
+          <button class="chip-btn" id="overThresholdPreset8">8 ชม.</button>
+        </div>
+      </div>
+
       <div class="stats-row" id="adminStatsRow"></div>
 
       <div class="chart-card" id="dataIssuesCard" style="display:none;">
         <div class="chart-card-title" style="color:var(--accent2);">⚠️ งาน "เสร็จสิ้น" ที่ข้อมูลวันที่ไม่ครบ (ต้องแก้ก่อนสถิติจะถูกต้อง)</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
-          รายการนี้ตรวจจากทุกงานในระบบ ไม่ผูกกับช่วงเวลาที่เลือกด้านบน — กรอกวันที่ที่ขาดแล้วกดบันทึกทีละรายการ
+          รายการนี้ตรวจจากทุกงานในระบบ (ทุกหน่วยงาน) ไม่ผูกกับช่วงเวลาที่เลือกด้านบน — กรอกวันที่ที่ขาดแล้วกดบันทึกทีละรายการ
         </div>
         <div id="dataIssuesList"></div>
       </div>
@@ -464,6 +497,8 @@
       </div>
     </div>
   </div>
+
+  </div><!-- /#mainApp -->
 
 </div>
 
@@ -511,25 +546,47 @@ async function sendTelegramMessage(text, buttonUrl, buttonLabel) {
   } catch (err) { console.error('Telegram send failed', err); }
 }
 
-let FARMS = [];
+/* =========================================================
+   BUSINESS UNITS (แยกหน่วยงาน)
+   ========================================================= */
+const UNITS = [
+  { code:'broiler', name:'ไก่เนื้อ', icon:'🐔', desc:'ฟาร์มไก่เนื้อ (สายผลิต)' },
+  { code:'breeder', name:'ฟาร์มซันบรีดเดอร์', icon:'🥚', desc:'ฟาร์มพ่อแม่พันธุ์ (Breeder)' }
+];
+function unitName(code) { const u = UNITS.find(x => x.code === code); return u ? u.name : (code || '-'); }
+function unitIcon(code) { const u = UNITS.find(x => x.code === code); return u ? u.icon : '🏭'; }
+
+let currentUnit = localStorage.getItem('current_unit') || null;
+
+let FARMS = [];       // ชื่อฟาร์มของหน่วยงานที่กำลังใช้งานอยู่ (currentUnit) เท่านั้น — ใช้ในหน้าแจ้งซ่อม/รายการงานซ่อม
+let FARMS_ALL = [];   // ฟาร์มทั้งหมดทุกหน่วยงาน [{farm_name, business_unit}] — ใช้ในหน้า Admin เท่านั้น
 
 const STATUS_LIST = ['จ่ายงาน','รออะไหล่','กำลังดำเนินการ','เสร็จสิ้น'];
 const STATUS_CLASS = { 'รอรับเรื่อง':'new', 'จ่ายงาน':'assigned', 'รออะไหล่':'waiting', 'กำลังดำเนินการ':'progress', 'เสร็จสิ้น':'done' };
 
-let TICKETS = [];
+let TICKETS = [];      // งานซ่อมของหน่วยงานที่กำลังใช้งานอยู่ (currentUnit) เท่านั้น — ใช้ในหน้าแจ้งซ่อม/รายการงานซ่อม
+let TICKETS_ALL = [];  // งานซ่อมทั้งหมดทุกหน่วยงาน — ใช้ในหน้า Admin เท่านั้น
 let filterState = { farm:'', status:'', search:'' };
 let openTicketId = null;
 
 /* =========================================================
-   LOAD / SAVE SETTINGS (PIN codes) — from Supabase
+   LOAD / SAVE SETTINGS (PIN codes, แยกตามหน่วยงาน) — from Supabase
    ========================================================= */
+let TECH_PINS = { broiler:'4120', breeder:'4121' };     // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
+let ADMIN_PINS = { broiler:'1124120', breeder:'1124121' }; // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
+
 async function loadSettings() {
   try {
     const { data, error } = await sb.from('settings').select('key, value');
     if (error) throw error;
     data.forEach(row => {
-      if (row.key === 'tech_pin') TECH_PIN = row.value;
-      if (row.key === 'admin_pin') ADMIN_PIN = row.value;
+      if (row.key === 'tech_pin_broiler') TECH_PINS.broiler = row.value;
+      if (row.key === 'tech_pin_breeder') TECH_PINS.breeder = row.value;
+      if (row.key === 'admin_pin_broiler') ADMIN_PINS.broiler = row.value;
+      if (row.key === 'admin_pin_breeder') ADMIN_PINS.breeder = row.value;
+      // รองรับข้อมูลเก่าก่อน migrate (เผื่อยังไม่ได้รัน SQL patch) — ถือเป็นรหัสของ broiler
+      if (row.key === 'tech_pin') TECH_PINS.broiler = row.value;
+      if (row.key === 'admin_pin') ADMIN_PINS.broiler = row.value;
     });
   } catch (err) {
     console.error('loadSettings failed (using defaults)', err);
@@ -547,9 +604,10 @@ async function updateSetting(key, value) {
    ========================================================= */
 async function loadFarms() {
   try {
-    const { data, error } = await sb.from('farms').select('farm_name').order('farm_name');
+    const { data, error } = await sb.from('farms').select('farm_name, business_unit').order('farm_name');
     if (error) throw error;
-    FARMS = data.map(r => r.farm_name);
+    FARMS_ALL = data;
+    FARMS = data.filter(r => r.business_unit === currentUnit).map(r => r.farm_name);
   } catch (err) {
     console.error('loadFarms failed', err);
   }
@@ -569,12 +627,66 @@ document.getElementById('statusChips').innerHTML = ['ทั้งหมด', ...
 }).join('');
 
 /* =========================================================
+   UNIT SELECT LANDING SCREEN
+   ========================================================= */
+function renderUnitSelectScreen() {
+  document.getElementById('unitCardList').innerHTML = UNITS.map(u => `
+    <div class="unit-card" data-unit="${u.code}">
+      <div class="unit-icon">${u.icon}</div>
+      <div>
+        <div class="unit-name">${u.name}</div>
+        <div class="unit-desc">${u.desc}</div>
+      </div>
+    </div>`).join('');
+  document.querySelectorAll('.unit-card').forEach(card => {
+    card.addEventListener('click', () => selectUnit(card.dataset.unit));
+  });
+}
+
+async function selectUnit(code) {
+  currentUnit = code;
+  localStorage.setItem('current_unit', code);
+  await enterApp();
+}
+
+async function enterApp() {
+  document.getElementById('unitSelectScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  updateUnitBadge();
+  await loadFarms();
+  await loadTickets();
+}
+
+function backToUnitSelect() {
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('unitSelectScreen').style.display = 'block';
+}
+
+function updateUnitBadge() {
+  const badge = document.getElementById('unitBadge');
+  if (!currentUnit) { badge.style.display = 'none'; return; }
+  badge.style.display = 'inline-flex';
+  badge.textContent = unitIcon(currentUnit) + ' ' + unitName(currentUnit) + ' · เปลี่ยน';
+}
+
+document.getElementById('unitAdminBypassLink').addEventListener('click', () => {
+  document.getElementById('unitSelectScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  updateUnitBadge();
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelector('.nav-btn[data-view="admin"]').classList.add('active');
+  document.getElementById('view-admin').classList.add('active');
+  showAdminView();
+});
+
+/* =========================================================
    TECHNICIAN PIN GATE (client-side only — a basic deterrent,
    not real security: the PIN is visible in this file's source)
    ========================================================= */
-let TECH_PIN = '4120'; // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
-function isTechUnlocked() { return sessionStorage.getItem('tech_unlocked') === 'yes'; }
+function isTechUnlocked() { return sessionStorage.getItem('tech_unlocked_' + currentUnit) === 'yes'; }
 function showListView() {
+  if (!currentUnit) { backToUnitSelect(); return; }
   if (isTechUnlocked()) {
     document.getElementById('pinGate').style.display = 'none';
     document.getElementById('managementContent').style.display = 'block';
@@ -591,8 +703,8 @@ document.getElementById('pinSubmitBtn').addEventListener('click', checkPin);
 document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
 function checkPin() {
   const val = document.getElementById('pinInput').value.trim();
-  if (val === TECH_PIN) {
-    sessionStorage.setItem('tech_unlocked', 'yes');
+  if (val === TECH_PINS[currentUnit]) {
+    sessionStorage.setItem('tech_unlocked_' + currentUnit, 'yes');
     showListView();
   } else {
     document.getElementById('pinError').textContent = 'รหัสผ่านไม่ถูกต้อง';
@@ -600,12 +712,12 @@ function checkPin() {
   }
 }
 document.getElementById('lockBtn').addEventListener('click', () => {
-  sessionStorage.removeItem('tech_unlocked');
+  sessionStorage.removeItem('tech_unlocked_' + currentUnit);
   showListView();
 });
 
 /* =========================================================
-   FARM MANAGEMENT (technicians only — inside PIN gate)
+   FARM MANAGEMENT (technicians only — inside PIN gate, scoped to currentUnit)
    ========================================================= */
 let editingFarm = null;
 
@@ -620,7 +732,7 @@ document.getElementById('farmManageToggle').addEventListener('click', () => {
 function renderFarmManageList() {
   const listEl = document.getElementById('farmManageList');
   if (!listEl) return;
-  if (!FARMS.length) { listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">ยังไม่มีฟาร์มในระบบ</div>`; return; }
+  if (!FARMS.length) { listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">ยังไม่มีฟาร์มในหน่วยงานนี้</div>`; return; }
 
   listEl.innerHTML = FARMS.map(f => {
     if (editingFarm === f) {
@@ -737,7 +849,8 @@ async function loadTickets() {
   try {
     const { data, error } = await sb.from('tickets').select('*').order('created_at', { ascending:false });
     if (error) throw error;
-    TICKETS = data;
+    TICKETS_ALL = data;
+    TICKETS = data.filter(t => t.business_unit === currentUnit);
     statusEl.textContent = `เชื่อมต่อสำเร็จ • ${TICKETS.length} งาน`;
     statusEl.className = 'ok';
     renderTickets();
@@ -786,12 +899,14 @@ async function doSbCreateTicket(t) {
   const { data, error } = await sb.from('tickets').insert({
     farm: t.farm, house_no: t.house_no, category: t.category, description: t.description,
     reporter_name: t.reporter_name, reporter_contact: t.reporter_contact,
+    business_unit: currentUnit,
     status: 'รอรับเรื่อง', history
   }).select().single();
   if (error) return { ok:false, error: error.message };
 
   sendTelegramMessage(
     `🆕 <b>แจ้งซ่อมใหม่ #${data.ticket_no}</b>\n` +
+    `🏭 หน่วยงาน: ${unitName(currentUnit)}\n` +
     `🏠 ฟาร์ม: ${t.farm} • เล้า ${t.house_no || '-'}\n` +
     `🔧 ระบบ: ${t.category}\n` +
     `📝 อาการ: ${t.description}\n` +
@@ -851,8 +966,8 @@ async function doSbUpdateTicketStatus(body) {
 async function doSbAddFarm(body) {
   const name = (body.name || '').trim();
   if (!name) return { ok:false, error:'กรุณาระบุชื่อฟาร์ม' };
-  if (FARMS.includes(name)) return { ok:false, error:'มีฟาร์มชื่อนี้อยู่แล้ว' };
-  const { error } = await sb.from('farms').insert({ farm_name: name });
+  if (FARMS.includes(name)) return { ok:false, error:'มีฟาร์มชื่อนี้อยู่แล้วในหน่วยงานนี้' };
+  const { error } = await sb.from('farms').insert({ farm_name: name, business_unit: currentUnit });
   if (error) return { ok:false, error: error.message };
   return { ok:true };
 }
@@ -860,16 +975,16 @@ async function doSbAddFarm(body) {
 async function doSbRenameFarm(body) {
   const { oldName, newName } = body;
   if (!oldName || !newName) return { ok:false, error:'ข้อมูลไม่ครบ' };
-  const { error: e1 } = await sb.from('farms').update({ farm_name: newName }).eq('farm_name', oldName);
+  const { error: e1 } = await sb.from('farms').update({ farm_name: newName }).eq('farm_name', oldName).eq('business_unit', currentUnit);
   if (e1) return { ok:false, error: e1.message };
-  // cascade rename: อัปเดตชื่อฟาร์มในงานซ่อมเดิมที่เคยผูกกับชื่อนี้ด้วย
-  const { error: e2 } = await sb.from('tickets').update({ farm: newName }).eq('farm', oldName);
+  // cascade rename: อัปเดตชื่อฟาร์มในงานซ่อมเดิมที่เคยผูกกับชื่อนี้ (เฉพาะหน่วยงานเดียวกัน) ด้วย
+  const { error: e2 } = await sb.from('tickets').update({ farm: newName }).eq('farm', oldName).eq('business_unit', currentUnit);
   if (e2) return { ok:false, error: e2.message };
   return { ok:true };
 }
 
 async function doSbDeleteFarm(body) {
-  const { error } = await sb.from('farms').delete().eq('farm_name', body.name);
+  const { error } = await sb.from('farms').delete().eq('farm_name', body.name).eq('business_unit', currentUnit);
   if (error) return { ok:false, error: error.message };
   // หมายเหตุ: ไม่ลบ/แก้ข้อมูลงานซ่อมเดิมที่เคยอ้างอิงฟาร์มนี้ เพื่อไม่ให้ประวัติข้อมูลหายไป
   return { ok:true };
@@ -898,6 +1013,7 @@ document.getElementById('submitReportBtn').addEventListener('click', async () =>
     document.getElementById('reportSuccessArea').innerHTML = `
       <div class="success-banner" style="text-align:left;">
         ✅ แจ้งซ่อมสำเร็จ! เลขที่งาน #${result.ticket_no}
+        <div class="confirm-row"><b>หน่วยงาน:</b> ${unitName(currentUnit)}</div>
         <div class="confirm-row"><b>ฟาร์ม:</b> ${farm} • ${house_no}</div>
         <div class="confirm-row"><b>ชื่องาน:</b> ${jobName}</div>
         <div class="confirm-row"><b>สถานะ:</b> <span class="status-badge new">รอรับเรื่อง</span></div>
@@ -1215,9 +1331,8 @@ function renderDashboard() {
 }
 
 /* =========================================================
-   ADMIN (separate PIN, full analytics/reporting)
+   ADMIN (separate PIN, ดูข้อมูลรวมทุกหน่วยงาน + ตัวกรอง)
    ========================================================= */
-let ADMIN_PIN = '1124120'; // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
 function isAdminUnlocked() { return sessionStorage.getItem('admin_unlocked') === 'yes'; }
 function showAdminView() {
   if (isAdminUnlocked()) {
@@ -1234,7 +1349,8 @@ function showAdminView() {
 }
 function checkAdminPin() {
   const val = document.getElementById('adminPinInput').value.trim();
-  if (val === ADMIN_PIN) {
+  // Admin PIN ของหน่วยงานไหนก็ได้ ปลดล็อกได้ — เพราะหน้า Admin แสดงข้อมูลรวมทุกหน่วยงาน
+  if (val === ADMIN_PINS.broiler || val === ADMIN_PINS.breeder) {
     sessionStorage.setItem('admin_unlocked', 'yes');
     showAdminView();
   } else {
@@ -1249,7 +1365,22 @@ document.getElementById('adminLockBtn').addEventListener('click', () => {
   showAdminView();
 });
 
-/* ---- PIN settings management (admin only) ---- */
+/* ---- Admin unit filter (ทั้งหมด / ไก่เนื้อ / บรีดเดอร์) ---- */
+let adminUnitFilter = 'all';
+function renderAdminUnitFilter() {
+  const el = document.getElementById('adminUnitFilter');
+  const options = [{ code:'all', name:'ทั้งหมด', icon:'🏢' }, ...UNITS];
+  el.innerHTML = options.map(o => `<button class="admin-unit-chip ${adminUnitFilter===o.code?'active':''}" data-unit="${o.code}">${o.icon} ${o.name}</button>`).join('');
+  el.querySelectorAll('.admin-unit-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      adminUnitFilter = chip.dataset.unit;
+      renderAdminUnitFilter();
+      renderAdminReport();
+    });
+  });
+}
+
+/* ---- PIN settings management (admin only, แยกฟอร์มตามหน่วยงาน) ---- */
 document.getElementById('pinManageToggle').addEventListener('click', () => {
   const box = document.getElementById('pinManageBox');
   const arrow = document.getElementById('pinManageArrow');
@@ -1257,30 +1388,59 @@ document.getElementById('pinManageToggle').addEventListener('click', () => {
   box.style.display = isOpen ? 'none' : 'block';
   arrow.textContent = isOpen ? '▼' : '▲';
 });
-document.getElementById('saveTechPinBtn').addEventListener('click', async () => {
-  const val = document.getElementById('newTechPinInput').value.trim();
-  if (!val) { alert('กรุณากรอกรหัสผ่านใหม่'); return; }
-  const result = await updateSetting('tech_pin', val);
-  if (result.ok) {
-    TECH_PIN = val;
-    document.getElementById('newTechPinInput').value = '';
-    alert('เปลี่ยนรหัสผ่านช่างสำเร็จ');
-  } else {
-    alert('บันทึกไม่สำเร็จ: ' + result.error);
-  }
-});
-document.getElementById('saveAdminPinBtn').addEventListener('click', async () => {
-  const val = document.getElementById('newAdminPinInput').value.trim();
-  if (!val) { alert('กรุณากรอกรหัสผ่านใหม่'); return; }
-  const result = await updateSetting('admin_pin', val);
-  if (result.ok) {
-    ADMIN_PIN = val;
-    document.getElementById('newAdminPinInput').value = '';
-    alert('เปลี่ยนรหัสผ่าน Admin สำเร็จ — ใช้รหัสใหม่ตั้งแต่การล็อกอินครั้งถัดไป');
-  } else {
-    alert('บันทึกไม่สำเร็จ: ' + result.error);
-  }
-});
+
+function renderPinSettingsList() {
+  const el = document.getElementById('pinSettingsList');
+  el.innerHTML = UNITS.map(u => `
+    <div class="pin-settings-row">
+      <label class="complete-label">${u.icon} รหัสผ่านช่าง/วิศวกร — ${u.name}</label>
+      <div class="pin-settings-form">
+        <input type="text" id="newTechPin-${u.code}" class="form-input" placeholder="รหัสใหม่สำหรับช่าง (${u.name})" maxlength="12">
+        <button class="chip-btn" data-save-tech="${u.code}">บันทึก</button>
+      </div>
+    </div>
+    <div class="pin-settings-row">
+      <label class="complete-label">${u.icon} รหัสผ่าน Admin — ${u.name}</label>
+      <div class="pin-settings-form">
+        <input type="text" id="newAdminPin-${u.code}" class="form-input" placeholder="รหัสใหม่สำหรับ Admin (${u.name})" maxlength="12">
+        <button class="chip-btn" data-save-admin="${u.code}">บันทึก</button>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-save-tech]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.dataset.saveTech;
+      const input = document.getElementById(`newTechPin-${code}`);
+      const val = input.value.trim();
+      if (!val) { alert('กรุณากรอกรหัสผ่านใหม่'); return; }
+      const result = await updateSetting('tech_pin_' + code, val);
+      if (result.ok) {
+        TECH_PINS[code] = val;
+        input.value = '';
+        alert(`เปลี่ยนรหัสผ่านช่าง (${unitName(code)}) สำเร็จ`);
+      } else {
+        alert('บันทึกไม่สำเร็จ: ' + result.error);
+      }
+    });
+  });
+  el.querySelectorAll('[data-save-admin]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.dataset.saveAdmin;
+      const input = document.getElementById(`newAdminPin-${code}`);
+      const val = input.value.trim();
+      if (!val) { alert('กรุณากรอกรหัสผ่านใหม่'); return; }
+      const result = await updateSetting('admin_pin_' + code, val);
+      if (result.ok) {
+        ADMIN_PINS[code] = val;
+        input.value = '';
+        alert(`เปลี่ยนรหัสผ่าน Admin (${unitName(code)}) สำเร็จ — ใช้รหัสใหม่ตั้งแต่การล็อกอินครั้งถัดไป`);
+      } else {
+        alert('บันทึกไม่สำเร็จ: ' + result.error);
+      }
+    });
+  });
+}
 
 /* ---- date range controls ---- */
 function isoDate(d) { return d.toISOString().slice(0,10); }
@@ -1308,33 +1468,53 @@ function getAdminRange() {
 }
 
 const ALL_STATUSES = ['รอรับเรื่อง', ...STATUS_LIST]; // รอรับเรื่อง, จ่ายงาน, รออะไหล่, กำลังดำเนินการ, เสร็จสิ้น
-let percentExcludedFarms = new Set(); // ฟาร์มที่ถูก "ไม่เลือก" ไม่ให้นับรวมใน % เกิน 1 วัน (คลิกที่เซลล์ % เพื่อสลับ)
+let percentExcludedFarms = new Set(); // ฟาร์มที่ถูก "ไม่เลือก" ไม่ให้นับรวมใน % เกิน...ชม. (คลิกที่เซลล์ % เพื่อสลับ) — key เป็น "farm|unit"
+let overThresholdHours = 24; // เกณฑ์ระยะเวลาซ่อมที่ถือว่า "เกิน" (ปรับได้จากช่อง input ในหน้า Admin) — ค่าเริ่มต้น 24 ชม. (1 วัน)
+
+document.getElementById('overThresholdApplyBtn').addEventListener('click', () => {
+  const val = parseFloat(document.getElementById('overThresholdInput').value);
+  if (isNaN(val) || val <= 0) { alert('กรุณากรอกจำนวนชั่วโมงให้ถูกต้อง (มากกว่า 0)'); return; }
+  overThresholdHours = val;
+  renderAdminReport();
+});
+function setOverThresholdPreset(hrs) {
+  overThresholdHours = hrs;
+  document.getElementById('overThresholdInput').value = hrs;
+  renderAdminReport();
+}
+document.getElementById('overThresholdPreset24').addEventListener('click', () => setOverThresholdPreset(24));
+document.getElementById('overThresholdPreset4').addEventListener('click', () => setOverThresholdPreset(4));
+document.getElementById('overThresholdPreset8').addEventListener('click', () => setOverThresholdPreset(8));
 
 function computeAdminStats() {
   const { from, to } = getAdminRange();
-  const scoped = TICKETS.filter(t => {
+  const scoped = TICKETS_ALL.filter(t => {
     const d = new Date(t.created_at);
-    return d >= from && d <= to;
+    if (d < from || d > to) return false;
+    if (adminUnitFilter !== 'all' && t.business_unit !== adminUnitFilter) return false;
+    return true;
   });
 
-  function blankFarmRow(f) {
+  function blankFarmRow(f, unit) {
     const statusCounts = {};
     ALL_STATUSES.forEach(s => statusCounts[s] = 0);
-    return { farm:f, count:0, statusCounts, durations:[], over1day:0, missingDuration:0 };
+    return { farm:f, unit, count:0, statusCounts, durations:[], over1day:0, missingDuration:0 };
   }
 
+  const relevantFarms = FARMS_ALL.filter(f => adminUnitFilter === 'all' || f.business_unit === adminUnitFilter);
   const byFarm = {};
-  FARMS.forEach(f => byFarm[f] = blankFarmRow(f));
+  relevantFarms.forEach(f => byFarm[f.farm_name + '|' + f.business_unit] = blankFarmRow(f.farm_name, f.business_unit));
   scoped.forEach(t => {
-    if (!byFarm[t.farm]) byFarm[t.farm] = blankFarmRow(t.farm);
-    const r = byFarm[t.farm];
+    const key = t.farm + '|' + t.business_unit;
+    if (!byFarm[key]) byFarm[key] = blankFarmRow(t.farm, t.business_unit);
+    const r = byFarm[key];
     r.count++;
     if (r.statusCounts[t.status] === undefined) r.statusCounts[t.status] = 0; // เผื่อสถานะแปลกที่ไม่อยู่ในลิสต์
     r.statusCounts[t.status]++;
     const hrs = durationHours(t.created_at, t.completed_at);
     if (hrs !== null) {
       r.durations.push(hrs);
-      if (hrs > 24) r.over1day++;
+      if (hrs > overThresholdHours) r.over1day++;
     } else if (t.status === 'เสร็จสิ้น') {
       r.missingDuration++; // งานที่สถานะ "เสร็จสิ้น" แต่ไม่มีวันที่ครบ คำนวณเวลาไม่ได้ — เอาไว้ตรวจสอบข้อมูล
     }
@@ -1342,6 +1522,7 @@ function computeAdminStats() {
 
   const rows = Object.values(byFarm).filter(r => r.count > 0).map(r => ({
     farm: r.farm,
+    unit: r.unit,
     count: r.count,
     statusCounts: r.statusCounts,
     maxHrs: r.durations.length ? Math.max(...r.durations) : null,
@@ -1362,7 +1543,7 @@ function computeAdminStats() {
   return { rows, totalCount, totalOver1day, totalMissingDuration, totalByStatus, scoped };
 }
 
-/* ---- Data quality: find & fix "เสร็จสิ้น" tickets with missing dates (checked across ALL tickets, not just the selected range) ---- */
+/* ---- Data quality: find & fix "เสร็จสิ้น" tickets with missing dates (checked across ALL tickets / ALL units) ---- */
 function toDatetimeLocal(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -1372,7 +1553,7 @@ function toDatetimeLocal(iso) {
 }
 
 function findDateIssues() {
-  return TICKETS.filter(t => t.status === 'เสร็จสิ้น' && durationHours(t.created_at, t.completed_at) === null);
+  return TICKETS_ALL.filter(t => t.status === 'เสร็จสิ้น' && durationHours(t.created_at, t.completed_at) === null);
 }
 
 function renderDataIssues() {
@@ -1385,7 +1566,7 @@ function renderDataIssues() {
   listEl.innerHTML = issues.map(t => `
     <div class="issue-row">
       <div class="issue-row-top">
-        <span class="issue-row-title">#${t.ticket_no} — ${t.farm} • ${t.house_no}</span>
+        <span class="issue-row-title">#${t.ticket_no} — <span class="unit-tag ${t.business_unit}">${unitName(t.business_unit)}</span> ${t.farm} • ${t.house_no}</span>
         <span class="status-badge done">เสร็จสิ้น</span>
       </div>
       <div class="issue-row-desc">${t.category} — ${t.description}</div>
@@ -1422,7 +1603,7 @@ function renderAdminReport() {
 
   document.getElementById('adminStatsRow').innerHTML = `
     <div class="stat-card"><div class="num">${totalCount}</div><div class="label">จำนวนงานแจ้งซ่อมทั้งหมด</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--red)">${totalOver1day}</div><div class="label">ครั้งที่ใช้เวลาซ่อมเกิน 1 วัน</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--red)">${totalOver1day}</div><div class="label">ครั้งที่ใช้เวลาซ่อมเกิน ${overThresholdHours} ชม.</div></div>
     <div class="stat-card"><div class="num" style="color:var(--accent)">${rows.length}</div><div class="label">จำนวนฟาร์มที่มีงานในช่วงนี้</div></div>
     ${totalMissingDuration > 0 ? `<div class="stat-card"><div class="num" style="color:var(--accent2)">${totalMissingDuration}</div><div class="label">⚠️ เสร็จสิ้นแต่วันที่ไม่ครบ (คำนวณเวลาไม่ได้)</div></div>` : ''}
   `;
@@ -1431,7 +1612,7 @@ function renderAdminReport() {
   const maxCount = Math.max(...rows.map(r=>r.count), 1);
   document.getElementById('adminChartCount').innerHTML = rows.map((r,i) => `
     <div class="bar-chart-row">
-      <div class="bar-chart-label"><span>${r.farm}</span><b>${r.count} ครั้ง</b></div>
+      <div class="bar-chart-label"><span>${unitIcon(r.unit)} ${r.farm}</span><b>${r.count} ครั้ง</b></div>
       <div class="bar-chart-track"><div class="bar-chart-fill" style="width:${(r.count/maxCount*100).toFixed(0)}%; background:${ADMIN_BAR_COLORS[i % ADMIN_BAR_COLORS.length]}"></div></div>
     </div>`).join('') || `<div class="empty-state">ไม่มีข้อมูลในช่วงเวลานี้</div>`;
 
@@ -1439,15 +1620,16 @@ function renderAdminReport() {
   const maxHrsAll = Math.max(...rows.map(r => r.maxHrs || 0), 1);
   document.getElementById('adminChartDuration').innerHTML = rows.filter(r=>r.maxHrs !== null).map((r,i) => `
     <div class="bar-chart-row">
-      <div class="bar-chart-label"><span>${r.farm}</span><b>นานสุด ${r.maxHrs.toFixed(1)} ชม. / เร็วสุด ${r.minHrs.toFixed(1)} ชม.</b></div>
+      <div class="bar-chart-label"><span>${unitIcon(r.unit)} ${r.farm}</span><b>นานสุด ${r.maxHrs.toFixed(1)} ชม. / เร็วสุด ${r.minHrs.toFixed(1)} ชม.</b></div>
       <div class="bar-chart-track">
         <div class="bar-chart-fill" style="width:${(r.maxHrs/maxHrsAll*100).toFixed(0)}%; background:${ADMIN_BAR_COLORS[i % ADMIN_BAR_COLORS.length]}"></div>
       </div>
     </div>`).join('') || `<div class="empty-state">ยังไม่มีงานที่เสร็จสิ้นในช่วงเวลานี้</div>`;
 
   // ---- Table: ระบุครบทุกสถานะ เพื่อทวนสอบผลรวม ----
-  // % เกิน 1 วัน: คลิกที่เซลล์ % ของแต่ละฟาร์มเพื่อ เลือก/ไม่เลือก ฟาร์มนั้นเข้าคำนวณ % รวมท้ายตาราง
-  const includedRows = rows.filter(r => !percentExcludedFarms.has(r.farm));
+  // % เกิน...ชม. (ปรับเกณฑ์ได้จากช่อง input ด้านบน): คลิกที่เซลล์ % ของแต่ละฟาร์มเพื่อ เลือก/ไม่เลือก ฟาร์มนั้นเข้าคำนวณ % รวมท้ายตาราง
+  const rowKey = r => r.farm + '|' + r.unit;
+  const includedRows = rows.filter(r => !percentExcludedFarms.has(rowKey(r)));
   const sumCountIncluded = includedRows.reduce((s,r) => s + r.count, 0);
   const sumOver1dayIncluded = includedRows.reduce((s,r) => s + r.over1day, 0);
   const totalPct = sumCountIncluded > 0 ? (sumOver1dayIncluded / sumCountIncluded * 100) : null;
@@ -1455,24 +1637,25 @@ function renderAdminReport() {
   document.getElementById('adminTable').innerHTML = `
     <table>
       <thead><tr>
-        <th>ฟาร์ม</th><th>แจ้งทั้งหมด</th>
+        <th>ฟาร์ม</th><th>หน่วยงาน</th><th>แจ้งทั้งหมด</th>
         ${ALL_STATUSES.map(s => `<th>${s}</th>`).join('')}
-        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน 1 วัน</th>
-        <th title="คลิกที่เซลล์เพื่อเลือก/ไม่เลือกฟาร์มนี้เข้าคำนวณ % รวม">% เกิน 1 วัน</th>
+        <th>นานสุด (ชม.)</th><th>เร็วสุด (ชม.)</th><th>เฉลี่ย (ชม.)</th><th>เกิน ${overThresholdHours} ชม.</th>
+        <th title="คลิกที่เซลล์เพื่อเลือก/ไม่เลือกฟาร์มนี้เข้าคำนวณ % รวม">% เกิน ${overThresholdHours} ชม.</th>
         <th>⚠️ วันที่ไม่ครบ</th>
       </tr></thead>
       <tbody>
         ${rows.map(r => {
           const pct = r.count > 0 ? (r.over1day / r.count * 100) : null;
-          const excluded = percentExcludedFarms.has(r.farm);
+          const key = rowKey(r);
+          const excluded = percentExcludedFarms.has(key);
           return `<tr style="${excluded?'opacity:0.45;':''}">
-          <td>${r.farm}</td><td><b>${r.count}</b></td>
+          <td>${r.farm}</td><td><span class="unit-tag ${r.unit}">${unitName(r.unit)}</span></td><td><b>${r.count}</b></td>
           ${ALL_STATUSES.map(s => `<td>${r.statusCounts[s]||0}</td>`).join('')}
           <td>${r.maxHrs===null?'-':r.maxHrs.toFixed(1)}</td>
           <td>${r.minHrs===null?'-':r.minHrs.toFixed(1)}</td>
           <td>${r.avgHrs===null?'-':r.avgHrs.toFixed(1)}</td>
           <td style="${r.over1day>0?'color:var(--red);font-weight:700;':''}">${r.over1day}</td>
-          <td class="pct-cell" data-farm="${r.farm.replace(/"/g,'&quot;')}" title="คลิกเพื่อ${excluded?'นำกลับมาคิด':'ไม่นำมาคิด'}ใน % รวม">
+          <td class="pct-cell" data-key="${key.replace(/"/g,'&quot;')}" title="คลิกเพื่อ${excluded?'นำกลับมาคิด':'ไม่นำมาคิด'}ใน % รวม">
             ${excluded?'⬜':'✅'} ${pct===null?'-':pct.toFixed(1)+'%'}
           </td>
           <td style="${r.missingDuration>0?'color:var(--accent2);font-weight:700;':''}">${r.missingDuration||'-'}</td>
@@ -1481,7 +1664,7 @@ function renderAdminReport() {
       </tbody>
       <tfoot>
         <tr style="font-weight:700;border-top:2px solid var(--border);">
-          <td>รวมทั้งหมด</td><td>${totalCount}</td>
+          <td>รวมทั้งหมด</td><td></td><td>${totalCount}</td>
           ${ALL_STATUSES.map(s => `<td>${totalByStatus[s]||0}</td>`).join('')}
           <td colspan="3"></td>
           <td style="color:var(--red);">${totalOver1day}</td>
@@ -1493,9 +1676,9 @@ function renderAdminReport() {
 
   document.querySelectorAll('.pct-cell').forEach(cell => {
     cell.addEventListener('click', () => {
-      const farm = cell.dataset.farm;
-      if (percentExcludedFarms.has(farm)) percentExcludedFarms.delete(farm);
-      else percentExcludedFarms.add(farm);
+      const key = cell.dataset.key;
+      if (percentExcludedFarms.has(key)) percentExcludedFarms.delete(key);
+      else percentExcludedFarms.add(key);
       renderAdminReport();
     });
   });
@@ -1507,29 +1690,30 @@ document.getElementById('adminExportBtn').addEventListener('click', () => {
   const { from, to } = getAdminRange();
   if (!rows.length) { alert('ไม่มีข้อมูลในช่วงเวลานี้'); return; }
   const wb = XLSX.utils.book_new();
+  const rowKey = r => r.farm + '|' + r.unit;
   const sheetRows = rows.map(r => ({
-    'ฟาร์ม': r.farm, 'แจ้งทั้งหมด': r.count,
+    'ฟาร์ม': r.farm, 'หน่วยงาน': unitName(r.unit), 'แจ้งทั้งหมด': r.count,
     ...Object.fromEntries(ALL_STATUSES.map(s => [s, r.statusCounts[s]||0])),
     'เวลาซ่อมนานสุด (ชม.)': r.maxHrs===null?'':Math.round(r.maxHrs*100)/100,
     'เวลาซ่อมเร็วสุด (ชม.)': r.minHrs===null?'':Math.round(r.minHrs*100)/100,
     'เวลาซ่อมเฉลี่ย (ชม.)': r.avgHrs===null?'':Math.round(r.avgHrs*100)/100,
-    'จำนวนครั้งเกิน 1 วัน': r.over1day,
-    '% เกิน 1 วัน': r.count>0 ? Math.round((r.over1day/r.count*100)*100)/100 : '',
-    'นับรวมใน % รวม': percentExcludedFarms.has(r.farm) ? 'ไม่นับ' : 'นับ',
+    [`จำนวนครั้งเกิน ${overThresholdHours} ชม.`]: r.over1day,
+    [`% เกิน ${overThresholdHours} ชม.`]: r.count>0 ? Math.round((r.over1day/r.count*100)*100)/100 : '',
+    'นับรวมใน % รวม': percentExcludedFarms.has(rowKey(r)) ? 'ไม่นับ' : 'นับ',
     'เสร็จสิ้นแต่วันที่ไม่ครบ': r.missingDuration
   }));
 
-  const includedRows = rows.filter(r => !percentExcludedFarms.has(r.farm));
+  const includedRows = rows.filter(r => !percentExcludedFarms.has(rowKey(r)));
   const sumCountIncluded = includedRows.reduce((s,r) => s + r.count, 0);
   const sumOver1dayIncluded = includedRows.reduce((s,r) => s + r.over1day, 0);
   const totalPct = sumCountIncluded > 0 ? Math.round((sumOver1dayIncluded/sumCountIncluded*100)*100)/100 : '';
 
   sheetRows.push({
-    'ฟาร์ม': 'รวมทั้งหมด', 'แจ้งทั้งหมด': totalCount,
+    'ฟาร์ม': 'รวมทั้งหมด', 'หน่วยงาน': adminUnitFilter === 'all' ? 'ทั้งหมด' : unitName(adminUnitFilter), 'แจ้งทั้งหมด': totalCount,
     ...Object.fromEntries(ALL_STATUSES.map(s => [s, totalByStatus[s]||0])),
     'เวลาซ่อมนานสุด (ชม.)': '', 'เวลาซ่อมเร็วสุด (ชม.)': '', 'เวลาซ่อมเฉลี่ย (ชม.)': '',
-    'จำนวนครั้งเกิน 1 วัน': totalOver1day,
-    '% เกิน 1 วัน': totalPct,
+    [`จำนวนครั้งเกิน ${overThresholdHours} ชม.`]: totalOver1day,
+    [`% เกิน ${overThresholdHours} ชม.`]: totalPct,
     'นับรวมใน % รวม': '(เฉพาะฟาร์มที่นับ)',
     'เสร็จสิ้นแต่วันที่ไม่ครบ': totalMissingDuration
   });
@@ -1603,7 +1787,7 @@ document.getElementById('downloadChart2Btn').addEventListener('click', () => {
 });
 
 /* =========================================================
-   EXPORT
+   EXPORT (หน้ารายการงานซ่อม — เฉพาะหน่วยงานที่กำลังใช้งานอยู่)
    ========================================================= */
 document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   if (!TICKETS.length) { alert('ยังไม่มีข้อมูล'); return; }
@@ -1611,7 +1795,7 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   const mapRow = t => {
     const hrs = durationHours(t.created_at, t.completed_at);
     return {
-      'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
+      'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'หน่วยงาน': unitName(t.business_unit), 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
       'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
       'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
       'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at,
@@ -1631,7 +1815,7 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName || 'farm');
   });
 
-  XLSX.writeFile(wb, 'ประวัติแจ้งซ่อม.xlsx');
+  XLSX.writeFile(wb, `ประวัติแจ้งซ่อม_${unitName(currentUnit)}.xlsx`);
 });
 
 /* =========================================================
@@ -1642,16 +1826,28 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   const fromEl = document.getElementById('adminDateFrom');
   toEl.value = isoDate(new Date());
   fromEl.value = isoDate(new Date(Date.now() - 30*86400000));
+
+  renderUnitSelectScreen();
+  renderAdminUnitFilter();
+  renderPinSettingsList();
+  document.getElementById('unitBadge').addEventListener('click', backToUnitSelect);
+
   await loadSettings();
-  await loadFarms();
-  await loadTickets();
+
+  if (currentUnit) {
+    await enterApp();
+  } else {
+    // ยังไม่ได้เลือกหน่วยงาน — โหลดข้อมูลไว้ล่วงหน้าเผื่อเข้า Admin (ภาพรวมทุกหน่วยงาน) ตรงๆ
+    await loadFarms();
+    await loadTickets();
+  }
 })();
 
 // deep link support: opening the page with ?view=list (from Telegram button)
-// switches straight to the management tab (still requires PIN to actually see it)
+// switches straight to the management tab (still requires PIN + a chosen unit)
 (function handleDeepLink() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('view') === 'list') {
+  if (params.get('view') === 'list' && currentUnit) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelector('.nav-btn[data-view="list"]').classList.add('active');

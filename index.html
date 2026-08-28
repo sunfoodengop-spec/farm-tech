@@ -1699,7 +1699,7 @@ document.getElementById('adminExportBtn').addEventListener('click', () => {
     'เวลาซ่อมเฉลี่ย (ชม.)': r.avgHrs===null?'':Math.round(r.avgHrs*100)/100,
     [`จำนวนครั้งเกิน ${overThresholdHours} ชม.`]: r.over1day,
     [`% เกิน ${overThresholdHours} ชม.`]: r.count>0 ? Math.round((r.over1day/r.count*100)*100)/100 : '',
-    'นับรวมใน % รวม': percentExcludedFarms.has(rowKey(r)) ? 'ไม่นับ' : 'นับ',
+    'นับรวมใน % รวม': percentExcludedFarms.has(rowKey(r)) ? '⚠️ ไม่นับ' : 'นับ',
     'เสร็จสิ้นแต่วันที่ไม่ครบ': r.missingDuration
   }));
 
@@ -1714,11 +1714,35 @@ document.getElementById('adminExportBtn').addEventListener('click', () => {
     'เวลาซ่อมนานสุด (ชม.)': '', 'เวลาซ่อมเร็วสุด (ชม.)': '', 'เวลาซ่อมเฉลี่ย (ชม.)': '',
     [`จำนวนครั้งเกิน ${overThresholdHours} ชม.`]: totalOver1day,
     [`% เกิน ${overThresholdHours} ชม.`]: totalPct,
-    'นับรวมใน % รวม': '(เฉพาะฟาร์มที่นับ)',
+    'นับรวมใน % รวม': '(สูตร SUMIF เฉพาะฟาร์มที่ "นับ" — ดูสูตรจริงที่เซลล์นี้)',
     'เสร็จสิ้นแต่วันที่ไม่ครบ': totalMissingDuration
   });
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), 'สรุปรายฟาร์ม');
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+
+  // ===== แทนที่ตัวเลข % รวมด้วยสูตร Excel จริง (SUMIF เฉพาะฟาร์มที่ "นับ") =====
+  // โครงคอลัมน์คงที่: A ฟาร์ม, B หน่วยงาน, C แจ้งทั้งหมด, D-H สถานะ(5คอลัมน์),
+  // I นานสุด, J เร็วสุด, K เฉลี่ย, L จำนวนครั้งเกิน, M % เกิน, N นับรวมใน%รวม, O วันที่ไม่ครบ
+  const lastDataRow = 1 + rows.length; // แถวหัวตาราง = แถว 1, ข้อมูลเริ่มแถว 2
+  const totalRow = lastDataRow + 1;
+  const rangeC = `C2:C${lastDataRow}`, rangeL = `L2:L${lastDataRow}`, rangeN = `N2:N${lastDataRow}`;
+  ws[`C${totalRow}`] = { t:'n', f: `SUM(${rangeC})` };
+  ws[`L${totalRow}`] = { t:'n', f: `SUM(${rangeL})` };
+  ws[`M${totalRow}`] = { t:'n', f: `SUMIF(${rangeN},"นับ",${rangeL})/SUMIF(${rangeN},"นับ",${rangeC})*100` };
+
+  // ===== หมายเหตุอธิบายวิธีคำนวณ ต่อท้ายตาราง กันคำนวณผิดเวลาเอาไปทำเองต่อ =====
+  const notes = [
+    [],
+    ['หมายเหตุการคำนวณคอลัมน์ % เกิน...ชม. (แถว "รวมทั้งหมด")'],
+    [`• สูตรจริง = (ผลรวม "จำนวนครั้งเกิน...ชม." เฉพาะฟาร์มที่คอลัมน์ "นับรวมใน % รวม" = "นับ") ÷ (ผลรวม "แจ้งทั้งหมด" เฉพาะฟาร์มกลุ่มเดียวกัน) × 100 — คลิกที่เซลล์ % ของแถวรวมเพื่อดูสูตรจริงในแถบสูตร`],
+    ['• ฟาร์มที่ขึ้น "⚠️ ไม่นับ" จะไม่ถูกรวมเข้าทั้งตัวเศษและตัวหารของ % รวม (แต่ยังถูกรวมในคอลัมน์ "แจ้งทั้งหมด" และ "จำนวนครั้งเกิน" ของแถวรวม เพราะสองคอลัมน์นี้นับทุกฟาร์มเสมอ)'],
+    ['⚠️ ห้ามใช้ AVERAGE() ทับคอลัมน์ % เกิน...ชม. ตรงๆ — จะได้ค่าเฉลี่ยที่ไม่ถ่วงน้ำหนักตามจำนวนงานของแต่ละฟาร์ม ทำให้ตัวเลขคลาดเคลื่อนจากความจริง (ฟาร์มที่แจ้งน้อยจะมีน้ำหนักเท่ากับฟาร์มที่แจ้งเยอะ)'],
+    ['ถ้าต้องการคำนวณเองในเซลล์อื่น ให้ใช้สูตรนี้แทน:'],
+    [`=SUMIF(${rangeN},"นับ",${rangeL})/SUMIF(${rangeN},"นับ",${rangeC})*100`]
+  ];
+  XLSX.utils.sheet_add_aoa(ws, notes, { origin: -1 });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'สรุปรายฟาร์ม');
   XLSX.writeFile(wb, `สรุปแจ้งซ่อม_${isoDate(from)}_ถึง_${isoDate(to)}.xlsx`);
 });
 

@@ -524,23 +524,29 @@ const SUPABASE_URL = 'https://yxecmomjktxjwjolgwui.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4ZWNtb21qa3R4andqb2xnd3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0NjcyNTUsImV4cCI6MjEwMzA0MzI1NX0.5ae_GdZ9DMy9HQrLZK2LgbxW5LxoNh1kysrN-GTv9Sk';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/* ===== Telegram (ไม่บังคับ) =====
+/* ===== Telegram (ไม่บังคับ, แยกบอท/กลุ่มตามหน่วยงานได้) =====
  * ⚠️ ข้อควรระวัง: หน้านี้เป็น static HTML ล้วนๆ ไม่มี backend ซ่อน Token แล้ว
  * ถ้าใส่ Token ตรงนี้ ใครก็ตามที่เปิดดู source code ของหน้าเว็บจะเห็น Token ได้
  * (ต่างจากตอนใช้ Apps Script ที่ Token ถูกซ่อนไว้ฝั่งเซิร์ฟเวอร์)
  * ถ้ากังวลเรื่องนี้ แนะนำเว้นว่างไว้ (ระบบจะข้ามการแจ้งเตือนไปเฉยๆ) แล้วบอกผมให้ตั้ง
  * Supabase Edge Function แยกไว้ส่ง Telegram แทน จะปลอดภัยกว่า
+ *
+ * ตั้งค่าแยกต่อหน่วยงานได้เลย — จะใช้บอทเดียวกันแต่คนละกลุ่ม (ใส่ botToken ซ้ำกัน แต่ chatId ต่างกัน)
+ * หรือจะใช้คนละบอทไปเลยก็ได้ ปล่อยว่างหน่วยงานไหนไว้ = หน่วยงานนั้นจะไม่ส่งแจ้งเตือนเข้า Telegram
  */
-const TELEGRAM_BOT_TOKEN = '';
-const TELEGRAM_CHAT_ID = '';
+const TELEGRAM_CONFIG = {
+  broiler: { botToken: '8892977720:AAH9eflEU3wTBwDDuhH4cbzFgiXx3qxvmCQ', chatId: '-5597640176' }, // กลุ่มแจ้งซ่อมฟาร์มไก่เนื้อ Sun group
+  breeder: { botToken: '8636743505:AAH8OIxkShX-46X39yrFZn2XX2JoVmVJVcg', chatId: '-5208362392' }  // กลุ่มแจ้งซ่อมฟาร์มบรีดเดอร์ Sunbreeder
+};
 const SITE_URL = '';
 
-async function sendTelegramMessage(text, buttonUrl, buttonLabel) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+async function sendTelegramMessage(unit, text, buttonUrl, buttonLabel) {
+  const cfg = TELEGRAM_CONFIG[unit];
+  if (!cfg || !cfg.botToken || !cfg.chatId) return;
   try {
-    const payload = { chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' };
+    const payload = { chat_id: cfg.chatId, text, parse_mode: 'HTML' };
     if (buttonUrl) payload.reply_markup = { inline_keyboard: [[{ text: buttonLabel || 'เปิดหน้าเว็บ', url: buttonUrl }]] };
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
   } catch (err) { console.error('Telegram send failed', err); }
@@ -557,6 +563,17 @@ function unitName(code) { const u = UNITS.find(x => x.code === code); return u ?
 function unitIcon(code) { const u = UNITS.find(x => x.code === code); return u ? u.icon : '🏭'; }
 
 let currentUnit = localStorage.getItem('current_unit') || null;
+
+// ถ้ามี ?unit=xxx ต่อท้าย URL (เช่น มาจากลิงก์ปุ่มใน Telegram) ให้ใช้ค่านี้ทับหน่วยงานที่เคยจำไว้ในเครื่อง
+// เพื่อให้ช่างที่กดลิงก์จาก Telegram ของหน่วยงานหนึ่ง ไปเจอข้อมูลของหน่วยงานนั้นเสมอ ไม่สลับไปหน่วยงานอื่นที่เคยเลือกไว้ก่อนหน้า
+(function applyUnitFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const urlUnit = params.get('unit');
+  if (urlUnit && UNITS.some(u => u.code === urlUnit)) {
+    currentUnit = urlUnit;
+    localStorage.setItem('current_unit', urlUnit);
+  }
+})();
 
 let FARMS = [];       // ชื่อฟาร์มของหน่วยงานที่กำลังใช้งานอยู่ (currentUnit) เท่านั้น — ใช้ในหน้าแจ้งซ่อม/รายการงานซ่อม
 let FARMS_ALL = [];   // ฟาร์มทั้งหมดทุกหน่วยงาน [{farm_name, business_unit}] — ใช้ในหน้า Admin เท่านั้น
@@ -905,13 +922,14 @@ async function doSbCreateTicket(t) {
   if (error) return { ok:false, error: error.message };
 
   sendTelegramMessage(
+    currentUnit,
     `🆕 <b>แจ้งซ่อมใหม่ #${data.ticket_no}</b>\n` +
     `🏭 หน่วยงาน: ${unitName(currentUnit)}\n` +
     `🏠 ฟาร์ม: ${t.farm} • เล้า ${t.house_no || '-'}\n` +
     `🔧 ระบบ: ${t.category}\n` +
     `📝 อาการ: ${t.description}\n` +
     `👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_contact || '-'})`,
-    SITE_URL ? (SITE_URL + '?view=list') : '', '👷 เข้าไปรับงานนี้'
+    SITE_URL ? (SITE_URL + '?view=list&unit=' + currentUnit) : '', '👷 เข้าไปรับงานนี้'
   );
   return { ok:true, id: data.id, ticket_no: data.ticket_no };
 }
@@ -930,7 +948,7 @@ async function doSbClaimTicket(body) {
 }
 
 async function doSbUpdateTicketStatus(body) {
-  const { data: row, error: e1 } = await sb.from('tickets').select('ticket_no, farm, house_no, status, history').eq('id', body.id).single();
+  const { data: row, error: e1 } = await sb.from('tickets').select('ticket_no, farm, house_no, status, history, business_unit').eq('id', body.id).single();
   if (e1) return { ok:false, error: e1.message };
 
   if (body.status === 'เสร็จสิ้น' && (!body.parts_used || !body.solution || !body.prevention)) {
@@ -953,6 +971,7 @@ async function doSbUpdateTicketStatus(body) {
 
   if (body.status === 'เสร็จสิ้น') {
     sendTelegramMessage(
+      row.business_unit,
       `✅ <b>งานซ่อมเสร็จสิ้น #${row.ticket_no}</b>\n` +
       `🏠 ฟาร์ม: ${row.farm} • เล้า ${row.house_no || '-'}\n` +
       `🔩 อะไหล่ที่ใช้: ${body.parts_used}\n` +
@@ -1867,8 +1886,9 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   }
 })();
 
-// deep link support: opening the page with ?view=list (from Telegram button)
-// switches straight to the management tab (still requires PIN + a chosen unit)
+// deep link support: opening the page with ?view=list&unit=broiler (from Telegram button)
+// switches straight to the management tab (still requires PIN); ?unit= (handled above, near currentUnit)
+// already makes sure the correct หน่วยงาน is selected before we get here
 (function handleDeepLink() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('view') === 'list' && currentUnit) {

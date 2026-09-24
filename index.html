@@ -456,6 +456,11 @@
       </div>
 
       <div class="chart-card">
+        <div class="chart-card-title">เลือกดูตามสถานะเล้า / ผลกระทบการเลี้ยง</div>
+        <div class="admin-unit-filter" id="adminHouseStatusFilter"></div>
+      </div>
+
+      <div class="chart-card">
         <div class="chart-card-title">เลือกช่วงเวลาที่ต้องการดูข้อมูล</div>
         <div class="admin-daterow">
           <div><label class="complete-label">ตั้งแต่วันที่</label><input type="date" id="adminDateFrom" class="form-input"></div>
@@ -1507,6 +1512,32 @@ function renderAdminUnitFilter() {
   });
 }
 
+/* ---- Admin house-status filter (ทั้งหมด / มีเลี้ยง-กระทบ / มีเลี้ยง-ไม่กระทบ / พักเล้า) ---- */
+let adminHouseStatusFilter = 'all'; // 'all' | 'มีเลี้ยง|กระทบ' | 'มีเลี้ยง|ไม่กระทบ' | 'พักเล้า'
+const ADMIN_HOUSE_STATUS_OPTIONS = [
+  { code:'all', name:'ทั้งหมด', icon:'🏢' },
+  { code:'มีเลี้ยง|กระทบ', name:'มีเลี้ยง — กระทบการเลี้ยง', icon:'🐔' },
+  { code:'มีเลี้ยง|ไม่กระทบ', name:'มีเลี้ยง — ไม่กระทบการเลี้ยง', icon:'🐤' },
+  { code:'พักเล้า', name:'พักเล้า', icon:'🚪' }
+];
+function ticketMatchesHouseStatusFilter(t) {
+  if (adminHouseStatusFilter === 'all') return true;
+  if (adminHouseStatusFilter === 'พักเล้า') return t.house_status === 'พักเล้า';
+  const [hs, imp] = adminHouseStatusFilter.split('|');
+  return t.house_status === hs && t.impact_status === imp;
+}
+function renderAdminHouseStatusFilter() {
+  const el = document.getElementById('adminHouseStatusFilter');
+  el.innerHTML = ADMIN_HOUSE_STATUS_OPTIONS.map(o => `<button class="admin-unit-chip ${adminHouseStatusFilter===o.code?'active':''}" data-hs="${o.code}">${o.icon} ${o.name}</button>`).join('');
+  el.querySelectorAll('.admin-unit-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      adminHouseStatusFilter = chip.dataset.hs;
+      renderAdminHouseStatusFilter();
+      renderAdminReport();
+    });
+  });
+}
+
 /* ---- PIN settings management (admin only, แยกฟอร์มตามหน่วยงาน) ---- */
 document.getElementById('pinManageToggle').addEventListener('click', () => {
   const box = document.getElementById('pinManageBox');
@@ -1619,6 +1650,7 @@ function computeAdminStats() {
     const d = new Date(t.created_at);
     if (d < from || d > to) return false;
     if (adminUnitFilter !== 'all' && t.business_unit !== adminUnitFilter) return false;
+    if (!ticketMatchesHouseStatusFilter(t)) return false;
     return true;
   });
 
@@ -1954,6 +1986,7 @@ function renderParetoCauseChart() {
     const d = new Date(t.created_at);
     if (d < from || d > to) return false;
     if (adminUnitFilter !== 'all' && t.business_unit !== adminUnitFilter) return false;
+    if (!ticketMatchesHouseStatusFilter(t)) return false;
     if (farmName !== null && !(t.farm === farmName && t.business_unit === farmUnit)) return false;
     if (houseFilter && !(t.house_no || '').toLowerCase().includes(houseFilter)) return false;
     return true;
@@ -2246,6 +2279,7 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
 
   renderUnitSelectScreen();
   renderAdminUnitFilter();
+  renderAdminHouseStatusFilter();
   renderPinSettingsList();
   renderParetoMetricToggle();
   document.getElementById('unitBadge').addEventListener('click', backToUnitSelect);

@@ -266,6 +266,7 @@
   .unit-tag { display:inline-block; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; white-space:nowrap; }
   .unit-tag.broiler { background:rgba(79,179,255,0.15); color:var(--accent); }
   .unit-tag.breeder { background:rgba(255,180,84,0.15); color:var(--accent2); }
+  .unit-tag.ps { background:rgba(140,220,120,0.18); color:#5fd15a; }
   .pareto-wrap { overflow-x:auto; }
   .pareto-wrap svg { display:block; }
 </style>
@@ -562,7 +563,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  */
 const TELEGRAM_CONFIG = {
   broiler: { botToken: '8892977720:AAH9eflEU3wTBwDDuhH4cbzFgiXx3qxvmCQ', chatId: '-5597640176' }, // กลุ่มแจ้งซ่อมฟาร์มไก่เนื้อ Sun group
-  breeder: { botToken: '8636743505:AAH8OIxkShX-46X39yrFZn2XX2JoVmVJVcg', chatId: '-5208362392' }  // กลุ่มแจ้งซ่อมฟาร์มบรีดเดอร์ Sunbreeder
+  breeder: { botToken: '8636743505:AAH8OIxkShX-46X39yrFZn2XX2JoVmVJVcg', chatId: '-5208362392' }, // กลุ่มแจ้งซ่อมฟาร์มบรีดเดอร์ Sunbreeder
+  ps: { botToken: '', chatId: '' } // กลุ่มแจ้งซ่อม PS1 PS2 โรงฟัก — ยังไม่ได้ตั้งค่า (ปล่อยว่างไว้ = ไม่ส่งแจ้งเตือน Telegram จนกว่าจะใส่ Token/Chat ID)
 };
 const SITE_URL = 'https://sunfoodengop-spec.github.io/farm-tech/';
 
@@ -583,7 +585,8 @@ async function sendTelegramMessage(unit, text, buttonUrl, buttonLabel) {
    ========================================================= */
 const UNITS = [
   { code:'broiler', name:'ไก่เนื้อ', icon:'🐔', desc:'ฟาร์มไก่เนื้อ (สายผลิต)' },
-  { code:'breeder', name:'ฟาร์มซันบรีดเดอร์', icon:'🥚', desc:'ฟาร์มพ่อแม่พันธุ์ (Breeder)' }
+  { code:'breeder', name:'ฟาร์มซันบรีดเดอร์', icon:'🥚', desc:'ฟาร์มพ่อแม่พันธุ์ (Breeder)' },
+  { code:'ps', name:'PS1 PS2 โรงฟัก', icon:'🐣', desc:'ฟาร์ม PS1, PS2 และโรงฟัก' }
 ];
 function unitName(code) { const u = UNITS.find(x => x.code === code); return u ? u.name : (code || '-'); }
 function unitIcon(code) { const u = UNITS.find(x => x.code === code); return u ? u.icon : '🏭'; }
@@ -615,8 +618,8 @@ let openTicketId = null;
 /* =========================================================
    LOAD / SAVE SETTINGS (PIN codes, แยกตามหน่วยงาน) — from Supabase
    ========================================================= */
-let TECH_PINS = { broiler:'4120', breeder:'4121' };     // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
-let ADMIN_PINS = { broiler:'1124120', breeder:'1124121' }; // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
+let TECH_PINS = { broiler:'4120', breeder:'4121', ps:'4130' };     // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
+let ADMIN_PINS = { broiler:'1124120', breeder:'1124121', ps:'1124130' }; // ค่าเริ่มต้น จะถูกแทนที่ด้วยค่าจริงจาก Supabase ทันทีที่โหลดสำเร็จ
 
 async function loadSettings() {
   try {
@@ -625,8 +628,10 @@ async function loadSettings() {
     data.forEach(row => {
       if (row.key === 'tech_pin_broiler') TECH_PINS.broiler = row.value;
       if (row.key === 'tech_pin_breeder') TECH_PINS.breeder = row.value;
+      if (row.key === 'tech_pin_ps') TECH_PINS.ps = row.value;
       if (row.key === 'admin_pin_broiler') ADMIN_PINS.broiler = row.value;
       if (row.key === 'admin_pin_breeder') ADMIN_PINS.breeder = row.value;
+      if (row.key === 'admin_pin_ps') ADMIN_PINS.ps = row.value;
       // รองรับข้อมูลเก่าก่อน migrate (เผื่อยังไม่ได้รัน SQL patch) — ถือเป็นรหัสของ broiler
       if (row.key === 'tech_pin') TECH_PINS.broiler = row.value;
       if (row.key === 'admin_pin') ADMIN_PINS.broiler = row.value;
@@ -1395,7 +1400,7 @@ function showAdminView() {
 function checkAdminPin() {
   const val = document.getElementById('adminPinInput').value.trim();
   // Admin PIN ของหน่วยงานไหนก็ได้ ปลดล็อกได้ — เพราะหน้า Admin แสดงข้อมูลรวมทุกหน่วยงาน
-  if (val === ADMIN_PINS.broiler || val === ADMIN_PINS.breeder) {
+  if (val === ADMIN_PINS.broiler || val === ADMIN_PINS.breeder || val === ADMIN_PINS.ps) {
     sessionStorage.setItem('admin_unlocked', 'yes');
     showAdminView();
   } else {

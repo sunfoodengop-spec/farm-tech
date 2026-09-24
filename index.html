@@ -1157,6 +1157,29 @@ function durationHours(startStr, endStr) {
   if (isNaN(ms) || ms < 0) return null;
   return ms / 3600000;
 }
+/* ระยะเวลา "จริง" ของงานซ่อม: ถ้ามีการกรอก actual_repair_minutes (เวลาใช้จริง ยืนยันโดยแอดมิน/ช่าง) ไว้ ให้ใช้ค่านี้แทน
+   ค่าที่คำนวณจากเวลาแจ้ง→เวลาเสร็จ (ซึ่งอาจรวมเวลาที่รองานอยู่ ไม่ใช่เวลาซ่อมจริง) — ใช้ฟังก์ชันนี้แทน durationHours(t.created_at,t.completed_at)
+   ในทุกจุดที่คำนวณสถิติ/Pareto/Export เพื่อให้ตัวเลขตรงกับความเป็นจริงมากที่สุด */
+function ticketDurationHours(t) {
+  if (t.actual_repair_minutes !== null && t.actual_repair_minutes !== undefined && t.actual_repair_minutes !== '') {
+    const mins = Number(t.actual_repair_minutes);
+    if (!isNaN(mins) && mins >= 0) return mins / 60;
+  }
+  return durationHours(t.created_at, t.completed_at);
+}
+function formatTicketDuration(t) {
+  const hoursTotal = ticketDurationHours(t);
+  if (hoursTotal === null) return '-';
+  const totalMins = Math.round(hoursTotal * 60);
+  const days = Math.floor(totalMins / 1440);
+  const hrs = Math.floor((totalMins % 1440) / 60);
+  const mins = totalMins % 60;
+  let parts = [];
+  if (days > 0) parts.push(days + ' วัน');
+  if (hrs > 0) parts.push(hrs + ' ชม.');
+  if (mins > 0 || parts.length === 0) parts.push(mins + ' นาที');
+  return parts.join(' ') + (t.actual_repair_minutes !== null && t.actual_repair_minutes !== undefined && t.actual_repair_minutes !== '' ? ' (เวลาใช้จริง)' : '');
+}
 function formatDuration(startStr, endStr) {
   const hoursTotal = durationHours(startStr, endStr);
   if (hoursTotal === null) return '-';
@@ -1204,7 +1227,7 @@ function renderTickets() {
       <div class="ticket-desc">${t.description}</div>
       <div class="ticket-meta">
         <span>แจ้งโดย ${t.reporter_name}</span>
-        <span>${t.status === 'เสร็จสิ้น' ? '⏱ ใช้เวลา ' + formatDuration(t.created_at, t.completed_at) : timeAgo(t.created_at)}</span>
+        <span>${t.status === 'เสร็จสิ้น' ? '⏱ ใช้เวลา ' + formatTicketDuration(t) : timeAgo(t.created_at)}</span>
       </div>
       <div class="expand-hint" onclick="toggleTicket('${t.id}')">${isOpen ? '▲ ย่อ' : '▼ ดูรายละเอียด / อัปเดตสถานะ'}</div>
       <div class="ticket-detail ${isOpen?'open':''}" id="detail-${t.id}">
@@ -1259,7 +1282,7 @@ function renderTicketDetail(t) {
     html += `<div class="detail-row"><b>ผู้รับผิดชอบ:</b> ${t.assignee_name || '-'} ${t.assignee_contact ? `— <a class="call-link" href="tel:${t.assignee_contact}">📞 ${t.assignee_contact}</a>` : ''}</div>`;
 
     if (t.status === 'เสร็จสิ้น') {
-      html += `<div class="detail-row duration-row"><b>⏱ ระยะเวลาดำเนินการ:</b> ${formatDuration(t.created_at, t.completed_at)}</div>`;
+      html += `<div class="detail-row duration-row"><b>⏱ ระยะเวลาดำเนินการ:</b> ${formatTicketDuration(t)}</div>`;
       html += `<div class="detail-row"><b>อะไหล่ที่ใช้:</b> ${t.parts_used || '-'}</div>`;
       html += `<div class="detail-row"><b>วิธีแก้ไข:</b> ${t.solution || '-'}</div>`;
       html += `<div class="detail-row"><b>แนวทางป้องกัน:</b> ${t.prevention || '-'}</div>`;
@@ -1615,7 +1638,7 @@ function computeAdminStats() {
     r.count++;
     if (r.statusCounts[t.status] === undefined) r.statusCounts[t.status] = 0; // เผื่อสถานะแปลกที่ไม่อยู่ในลิสต์
     r.statusCounts[t.status]++;
-    const hrs = durationHours(t.created_at, t.completed_at);
+    const hrs = ticketDurationHours(t);
     if (hrs !== null) {
       r.durations.push(hrs);
       if (hrs > overThresholdHours) r.over1day++;
@@ -1941,7 +1964,7 @@ function renderParetoCauseChart() {
     const cat = t.category || 'ไม่ระบุ';
     if (!byCategory[cat]) byCategory[cat] = { count:0, minutes:0 };
     byCategory[cat].count++;
-    const hrs = durationHours(t.created_at, t.completed_at);
+    const hrs = ticketDurationHours(t);
     if (hrs !== null) byCategory[cat].minutes += hrs * 60;
   });
 
@@ -2185,15 +2208,16 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
   if (!TICKETS.length) { alert('ยังไม่มีข้อมูล'); return; }
   const wb = XLSX.utils.book_new();
   const mapRow = t => {
-    const hrs = durationHours(t.created_at, t.completed_at);
+    const hrs = ticketDurationHours(t);
     return {
       'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'หน่วยงาน': unitName(t.business_unit), 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
-      'สถานะเล้า': t.house_status || '', 'ผลกระทบต่อการเลี้ยง': t.house_status === 'มีเลี้ยง' ? (t.impact_status || '') : '',
       'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
       'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
       'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at,
-      'ระยะเวลาดำเนินการ': formatDuration(t.created_at, t.completed_at),
+      'ระยะเวลาดำเนินการ': formatTicketDuration(t),
       'ระยะเวลา (ชั่วโมง)': hrs === null ? '' : Math.round(hrs * 100) / 100,
+      'เวลาใช้จริง': t.actual_repair_minutes !== null && t.actual_repair_minutes !== undefined && t.actual_repair_minutes !== '' ? t.actual_repair_minutes + ' นาที' : '',
+      'สถานะเล้า': t.house_status || '', 'ผลกระทบการเลี้ยง': t.house_status === 'มีเลี้ยง' ? (t.impact_status ? t.impact_status + 'การเลี้ยง' : '') : '',
       'อะไหล่ที่ใช้': t.parts_used, 'วิธีแก้ไข': t.solution, 'แนวทางป้องกัน': t.prevention,
       'อัปเดตล่าสุด': t.updated_at, 'ประวัติ': t.history
     };

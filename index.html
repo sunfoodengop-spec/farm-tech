@@ -247,7 +247,7 @@
   .issue-date-form { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; }
   .issue-date-form > div { display:flex; flex-direction:column; }
   .issue-date-form label { font-size:11px; color:var(--muted); margin-bottom:4px; }
-  .issue-date-form input { padding:8px 9px; border-radius:6px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; }
+  .issue-date-form input, .issue-date-form select { padding:8px 9px; border-radius:6px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:13px; }
 
   /* ===== Unit select landing screen ===== */
   .unit-select-screen { text-align:center; padding:60px 20px; max-width:520px; margin:0 auto; }
@@ -319,6 +319,20 @@
     <div class="field">
       <label>หมายเลขเล้า *</label>
       <input type="text" id="rHouse" placeholder="เช่น เล้า 3">
+    </div>
+    <div class="field">
+      <label>สถานะเล้า *</label>
+      <select id="rHouseStatus">
+        <option value="มีเลี้ยง">มีเลี้ยง (กำลังเลี้ยงอยู่)</option>
+        <option value="พักเล้า">พักเล้า (ไม่มีสัตว์)</option>
+      </select>
+    </div>
+    <div class="field" id="rImpactField">
+      <label>ผลกระทบต่อการเลี้ยง *</label>
+      <select id="rImpact">
+        <option value="ไม่กระทบ">ไม่กระทบการเลี้ยง</option>
+        <option value="กระทบ">กระทบการเลี้ยง</option>
+      </select>
     </div>
     <div class="field">
       <label>ระบบที่ชำรุด *</label>
@@ -474,6 +488,14 @@
           รายการนี้ตรวจจากทุกงานในระบบ (ทุกหน่วยงาน) ไม่ผูกกับช่วงเวลาที่เลือกด้านบน — กรอกวันที่ที่ขาดแล้วกดบันทึกทีละรายการ
         </div>
         <div id="dataIssuesList"></div>
+      </div>
+
+      <div class="chart-card" id="houseStatusIssuesCard" style="display:none;">
+        <div class="chart-card-title" style="color:var(--accent2);">⚠️ งานที่ยังไม่ระบุ "สถานะเล้า" (พักเล้า/มีเลี้ยง)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+          รายการนี้ตรวจจากทุกงานในระบบ (ทุกหน่วยงาน) ไม่ผูกกับช่วงเวลาที่เลือกด้านบน — เลือกสถานะเล้าแล้วกดบันทึกทีละรายการ
+        </div>
+        <div id="houseStatusIssuesList"></div>
       </div>
 
       <div class="chart-card">
@@ -950,18 +972,24 @@ async function postAction(payload) {
 async function doSbCreateTicket(t) {
   const history = formatHistoryLine('', 'รอรับเรื่อง', t.reporter_name || '');
   const { data, error } = await sb.from('tickets').insert({
-    farm: t.farm, house_no: t.house_no, category: t.category, description: t.description,
+    farm: t.farm, house_no: t.house_no,
+    house_status: t.house_status || '', impact_status: t.impact_status || '',
+    category: t.category, description: t.description,
     reporter_name: t.reporter_name, reporter_contact: t.reporter_contact,
     business_unit: currentUnit,
     status: 'รอรับเรื่อง', history
   }).select().single();
   if (error) return { ok:false, error: error.message };
 
+  const statusLine = t.house_status === 'มีเลี้ยง'
+    ? `มีเลี้ยง (${t.impact_status || '-'}การเลี้ยง)`
+    : (t.house_status === 'พักเล้า' ? 'พักเล้า' : '-');
   sendTelegramMessage(
     currentUnit,
     `🆕 <b>แจ้งซ่อมใหม่ #${data.ticket_no}</b>\n` +
     `🏭 หน่วยงาน: ${unitName(currentUnit)}\n` +
     `🏠 ฟาร์ม: ${t.farm} • เล้า ${t.house_no || '-'}\n` +
+    `🐔 สถานะเล้า: ${statusLine}\n` +
     `🔧 ระบบ: ${t.category}\n` +
     `📝 อาการ: ${t.description}\n` +
     `👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_contact || '-'})`,
@@ -1048,9 +1076,19 @@ async function doSbDeleteFarm(body) {
 /* =========================================================
    REPORT FORM SUBMIT
    ========================================================= */
+// สถานะเล้า "พักเล้า" = ไม่มีสัตว์ ไม่มีผลกระทบการเลี้ยงให้เลือก จึงซ่อนช่อง "ผลกระทบต่อการเลี้ยง" ไปเลย
+function toggleImpactField() {
+  const houseStatus = document.getElementById('rHouseStatus').value;
+  document.getElementById('rImpactField').style.display = (houseStatus === 'มีเลี้ยง') ? 'block' : 'none';
+}
+document.getElementById('rHouseStatus').addEventListener('change', toggleImpactField);
+toggleImpactField();
+
 document.getElementById('submitReportBtn').addEventListener('click', async () => {
   const farm = document.getElementById('rFarm').value;
   const house_no = document.getElementById('rHouse').value.trim();
+  const house_status = document.getElementById('rHouseStatus').value;
+  const impact_status = (house_status === 'มีเลี้ยง') ? document.getElementById('rImpact').value : '';
   const category = document.getElementById('rCategory').value;
   const description = document.getElementById('rDesc').value.trim();
   const reporter_name = document.getElementById('rName').value.trim();
@@ -1061,20 +1099,24 @@ document.getElementById('submitReportBtn').addEventListener('click', async () =>
   }
   const btn = document.getElementById('submitReportBtn');
   btn.disabled = true; btn.textContent = 'กำลังส่ง...';
-  const result = await postAction({ action:'createTicket', ticket:{ farm, house_no, category, description, reporter_name, reporter_contact }});
+  const result = await postAction({ action:'createTicket', ticket:{ farm, house_no, house_status, impact_status, category, description, reporter_name, reporter_contact }});
   btn.disabled = false; btn.textContent = '📨 แจ้งซ่อม';
   if (result) {
     const jobName = `${category} — ${description}`;
+    const statusLine = house_status === 'มีเลี้ยง' ? `มีเลี้ยง (${impact_status}การเลี้ยง)` : 'พักเล้า';
     document.getElementById('reportSuccessArea').innerHTML = `
       <div class="success-banner" style="text-align:left;">
         ✅ แจ้งซ่อมสำเร็จ! เลขที่งาน #${result.ticket_no}
         <div class="confirm-row"><b>หน่วยงาน:</b> ${unitName(currentUnit)}</div>
         <div class="confirm-row"><b>ฟาร์ม:</b> ${farm} • ${house_no}</div>
+        <div class="confirm-row"><b>สถานะเล้า:</b> ${statusLine}</div>
         <div class="confirm-row"><b>ชื่องาน:</b> ${jobName}</div>
         <div class="confirm-row"><b>สถานะ:</b> <span class="status-badge new">รอรับเรื่อง</span></div>
         <div style="margin-top:8px;font-weight:400;">ทีมช่างจะรับเรื่องโดยเร็วที่สุด</div>
       </div>`;
     document.getElementById('rHouse').value = '';
+    document.getElementById('rHouseStatus').value = 'มีเลี้ยง';
+    toggleImpactField();
     document.getElementById('rDesc').value = '';
     document.getElementById('rName').value = '';
     document.getElementById('rContact').value = '';
@@ -1196,8 +1238,15 @@ function renderTickets() {
 
 let completingTicketId = null;
 
+function houseStatusLabel(t) {
+  if (!t.house_status) return '-';
+  if (t.house_status === 'พักเล้า') return 'พักเล้า';
+  return `มีเลี้ยง${t.impact_status ? ' (' + t.impact_status + 'การเลี้ยง)' : ''}`;
+}
+
 function renderTicketDetail(t) {
   let html = `<div class="detail-row"><b>อาการ:</b> ${t.description}</div>`;
+  html += `<div class="detail-row"><b>สถานะเล้า:</b> ${houseStatusLabel(t)}</div>`;
   html += `<div class="detail-row"><b>ผู้แจ้ง:</b> ${t.reporter_name} — <a class="call-link" href="tel:${t.reporter_contact}">📞 ${t.reporter_contact}</a></div>`;
 
   if (t.status === 'รอรับเรื่อง') {
@@ -1652,6 +1701,63 @@ async function doFixTicketDates(id) {
   if (isAdminUnlocked()) renderAdminReport();
 }
 
+/* ---- Data quality: fill in missing "สถานะเล้า" (house_status / impact_status) on old/blank tickets ---- */
+function findHouseStatusIssues() {
+  return TICKETS_ALL.filter(t => !t.house_status);
+}
+
+function renderHouseStatusIssues() {
+  const issues = findHouseStatusIssues();
+  const card = document.getElementById('houseStatusIssuesCard');
+  const listEl = document.getElementById('houseStatusIssuesList');
+  if (!issues.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  listEl.innerHTML = issues.map(t => `
+    <div class="issue-row">
+      <div class="issue-row-top">
+        <span class="issue-row-title">#${t.ticket_no} — <span class="unit-tag ${t.business_unit}">${unitName(t.business_unit)}</span> ${t.farm} • ${t.house_no}</span>
+        <span class="status-badge ${STATUS_CLASS[t.status]||'new'}">${t.status}</span>
+      </div>
+      <div class="issue-row-desc">${t.category} — ${t.description}</div>
+      <div class="issue-date-form">
+        <div>
+          <label>สถานะเล้า</label>
+          <select id="fix-housestatus-${t.id}">
+            <option value="มีเลี้ยง">มีเลี้ยง (กำลังเลี้ยงอยู่)</option>
+            <option value="พักเล้า">พักเล้า (ไม่มีสัตว์)</option>
+          </select>
+        </div>
+        <div id="fix-impact-wrap-${t.id}">
+          <label>ผลกระทบต่อการเลี้ยง</label>
+          <select id="fix-impact-${t.id}">
+            <option value="ไม่กระทบ">ไม่กระทบการเลี้ยง</option>
+            <option value="กระทบ">กระทบการเลี้ยง</option>
+          </select>
+        </div>
+        <button class="claim-btn" id="fix-housestatus-save-${t.id}">บันทึก</button>
+      </div>
+    </div>`).join('');
+
+  issues.forEach(t => {
+    const houseSel = document.getElementById(`fix-housestatus-${t.id}`);
+    const impactWrap = document.getElementById(`fix-impact-wrap-${t.id}`);
+    const toggle = () => { impactWrap.style.display = (houseSel.value === 'มีเลี้ยง') ? 'block' : 'none'; };
+    houseSel.addEventListener('change', toggle);
+    toggle();
+    document.getElementById(`fix-housestatus-save-${t.id}`).addEventListener('click', () => doFixHouseStatus(t.id));
+  });
+}
+
+async function doFixHouseStatus(id) {
+  const house_status = document.getElementById(`fix-housestatus-${id}`).value;
+  const impact_status = (house_status === 'มีเลี้ยง') ? document.getElementById(`fix-impact-${id}`).value : '';
+  const { error } = await sb.from('tickets').update({ house_status, impact_status }).eq('id', id);
+  if (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); return; }
+  await loadTickets();
+  if (isAdminUnlocked()) renderAdminReport();
+}
+
 /* =========================================================
    PARETO CHARTS (SVG แบบ vertical bar + เส้น % สะสม)
    ========================================================= */
@@ -1858,6 +1964,7 @@ function renderAdminReport() {
   const { rows, totalCount, totalOver1day, totalMissingDuration, totalByStatus } = computeAdminStats();
 
   renderDataIssues();
+  renderHouseStatusIssues();
   renderParetoFarmChart(rows);
   updateParetoFarmSelect();
   renderParetoCauseChart();
@@ -2081,6 +2188,7 @@ document.getElementById('exportTicketsBtn').addEventListener('click', () => {
     const hrs = durationHours(t.created_at, t.completed_at);
     return {
       'เลขที่': t.ticket_no, 'วันที่แจ้ง': t.created_at, 'หน่วยงาน': unitName(t.business_unit), 'ฟาร์ม': t.farm, 'เล้า': t.house_no,
+      'สถานะเล้า': t.house_status || '', 'ผลกระทบต่อการเลี้ยง': t.house_status === 'มีเลี้ยง' ? (t.impact_status || '') : '',
       'ระบบ': t.category, 'อาการ': t.description, 'ผู้แจ้ง': t.reporter_name, 'เบอร์ผู้แจ้ง': t.reporter_contact,
       'สถานะ': t.status, 'ผู้รับผิดชอบ': t.assignee_name, 'เบอร์ผู้รับผิดชอบ': t.assignee_contact,
       'วันที่รับงาน': t.claimed_at, 'วันที่เสร็จ': t.completed_at,
